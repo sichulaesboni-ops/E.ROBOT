@@ -1,0 +1,14 @@
+
+---
+
+## 1. Requirements
+
+| Component | Requires |
+|---|---|
+| `index.html` | Any modern browser |
+| `bridge.js` | Node.js 18+ (no npm packages) |
+| `executor.py` | Python 3.9+, MetaTrader 5 terminal, `pip install MetaTrader5` |
+
+Install Python dependency:
+```bash
+pip install MetaTrader5
