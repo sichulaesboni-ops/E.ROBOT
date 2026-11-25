@@ -1,683 +1,737 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>E.ROBOT — Trend Trading Terminal</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>E.ROBOT — Control Panel</title>
 <style>
-  :root {
-    color-scheme: dark;
-    --bg: #06090f;
-    --panel: #0d131f;
-    --panel-border: #1c2638;
-    --text-main: #f0f4f8;
-    --text-muted: #8b9bb4;
-    --accent-green: #10b981;
-    --accent-green-hover: #059669;
-    --accent-red: #ef4444;
-    --accent-red-hover: #dc2626;
-    --accent-blue: #3b82f6;
-    --accent-blue-hover: #2563eb;
-    --accent-orange: #f97316;
-    --accent-orange-hover: #ea580c;
-    --input-bg: #090d14;
-    --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  :root{
+    --bg:#06090f; --panel:#0d131f; --border:#1c2638;
+    --text:#dce6f2; --muted:#6b7d99; --accent:#3b82f6;
+    --green:#22c55e; --red:#ef4444; --yellow:#eab308;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size:13px; overflow-x:hidden;
+  }
+  /* ---------- HEADER ---------- */
+  header{
+    display:flex; align-items:center; gap:24px;
+    padding:12px 20px; background:var(--panel);
+    border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100;
+  }
+  .logo{font-weight:700; font-size:16px; letter-spacing:1px; color:#fff}
+  .logo span{color:var(--accent)}
+  .tags{display:flex; gap:10px; flex-wrap:wrap}
+  .tag{
+    font-family:var(--mono); font-size:11px; padding:4px 10px;
+    border:1px solid var(--border); border-radius:4px;
+    background:#0a0f19; color:var(--muted); display:flex; align-items:center; gap:6px;
+  }
+  .tag .dot{width:7px; height:7px; border-radius:50%; background:var(--red)}
+  .tag.on .dot{background:var(--green); box-shadow:0 0 8px var(--green)}
+  .tag.warn .dot{background:var(--yellow); box-shadow:0 0 8px var(--yellow)}
+  .tag .val{color:var(--text); font-weight:600}
+  .spacer{flex:1}
+  .perm-state{
+    font-family:var(--mono); font-size:11px; padding:6px 12px;
+    border:1px solid var(--border); border-radius:4px;
+    background:#0a0f19; color:var(--red); text-transform:uppercase; letter-spacing:.5px;
+  }
+  .perm-state.granted{color:var(--green); border-color:#1e3a2a}
+  .perm-state.active{color:var(--yellow); border-color:#3a3320}
+
+  /* ---------- TABS ---------- */
+  nav.tabs{
+    display:flex; gap:2px; padding:0 20px; background:var(--panel);
+    border-bottom:1px solid var(--border);
+  }
+  nav.tabs button{
+    background:transparent; border:none; color:var(--muted);
+    padding:12px 18px; font-size:12px; cursor:pointer;
+    border-bottom:2px solid transparent; transition:all .15s;
+  }
+  nav.tabs button:hover{color:var(--text)}
+  nav.tabs button.active{color:#fff; border-bottom-color:var(--accent)}
+
+  /* ---------- MAIN ---------- */
+  main{padding:20px; max-width:1400px; margin:0 auto}
+  .tabpage{display:none}
+  .tabpage.active{display:block}
+
+  .grid{
+    display:grid; grid-template-columns: 340px 1fr; gap:16px;
+  }
+  @media(max-width:900px){ .grid{grid-template-columns:1fr} }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:6px; padding:16px; margin-bottom:16px;
+  }
+  .panel h3{
+    font-size:11px; text-transform:uppercase; letter-spacing:1px;
+    color:var(--muted); margin-bottom:14px; font-weight:600;
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background-color: var(--bg);
-    color: var(--text-main);
-    font-family: var(--font-ui);
-    font-size: 13px;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
+  label{
+    display:block; font-size:11px; color:var(--muted);
+    margin-bottom:6px; text-transform:uppercase; letter-spacing:.5px;
   }
-
-  button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
-  button { cursor: pointer; border: none; outline: none; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  /* Layout */
-  .app-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-
-  /* Header */
-  .header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--panel-border);
+  input, select{
+    width:100%; padding:9px 11px; background:#0a0f19;
+    border:1px solid var(--border); border-radius:4px;
+    color:var(--text); font-family:var(--mono); font-size:12px;
+    outline:none; transition:border .15s;
   }
-  .logo-area h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px; }
-  .logo-area h1 span { color: var(--accent-green); }
-  .logo-area p { font-size: 10px; letter-spacing: 1.5px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; }
+  input:focus, select:focus{border-color:var(--accent)}
+  input[type=number]{font-family:var(--mono)}
+  .field{margin-bottom:12px}
 
-  .status-bar { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-  .status-tags { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .tag { padding: 4px 8px; border-radius: 4px; background: #1a2333; color: var(--text-muted); }
-  .tag.active { background: rgba(16, 185, 129, 0.1); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); }
-  .tag.error { background: rgba(239, 68, 68, 0.1); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); }
-  .status-details { display: flex; gap: 16px; font-size: 11px; color: var(--text-muted); }
-
-  .nav-tabs { display: flex; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid var(--panel-border); }
-  .nav-tab { padding: 10px 0; font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid transparent; background: none; transition: all 0.2s; }
-  .nav-tab:hover { color: var(--text-main); }
-  .nav-tab.active { color: var(--text-main); border-bottom-color: var(--accent-blue); }
-
-  /* Grid */
-  .dashboard-grid { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
-  .col-left { display: flex; flex-direction: column; gap: 20px; }
-  .col-right { display: flex; flex-direction: column; gap: 20px; }
-
-  /* Panels */
-  .panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 20px; }
-  .panel-header { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 16px; }
-
-  /* Forms */
-  .field-group { margin-bottom: 14px; }
-  .field-group label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
-  .input-wrapper { position: relative; display: flex; align-items: center; }
-  .input-control { width: 100%; background: var(--input-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 10px 12px; color: var(--text-main); font-family: var(--font-mono); font-size: 12px; transition: border-color 0.2s; }
-  .input-control:focus { outline: none; border-color: var(--accent-blue); }
-  select.input-control { appearance: none; cursor: pointer; }
-  .input-wrapper select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b9bb4' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
-  
-  .btn { display: flex; justify-content: center; align-items: center; width: 100%; padding: 12px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; transition: background 0.2s, transform 0.1s; }
-  .btn:active:not(:disabled) { transform: translateY(1px); }
-  .btn-green { background: var(--accent-green); color: #000; }
-  .btn-green:hover:not(:disabled) { background: var(--accent-green-hover); }
-  .btn-red { background: var(--accent-red); color: #fff; }
-  .btn-red:hover:not(:disabled) { background: var(--accent-red-hover); }
-  .btn-blue { background: var(--accent-blue); color: #fff; }
-  .btn-blue:hover:not(:disabled) { background: var(--accent-blue-hover); }
-  .btn-orange { background: var(--accent-orange); color: #fff; }
-  .btn-orange:hover:not(:disabled) { background: var(--accent-orange-hover); }
-  .btn-outline { background: transparent; border: 1px solid var(--panel-border); color: var(--text-main); }
-  .btn-outline:hover:not(:disabled) { background: #1a2333; }
-  
-  .status-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green); margin-left: 8px; box-shadow: 0 0 8px var(--accent-green); }
-
-  /* Quality Section */
-  .quality-grid { display: grid; grid-template-columns: 220px 1fr 220px; gap: 20px; align-items: start; }
-  .chart-container { position: relative; height: 220px; background: var(--input-bg); border: 1px solid var(--panel-border); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-  .chart-placeholder { color: var(--text-muted); font-size: 11px; text-align: center; padding: 20px; }
-
-  /* Meter / Gauge */
-  .gauge-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding-top: 10px; }
-  .gauge-svg { width: 180px; height: 100px; overflow: visible; }
-  .gauge-bg { fill: none; stroke: #1a2333; stroke-width: 12; stroke-linecap: round; }
-  .gauge-fill { fill: none; stroke: var(--accent-green); stroke-width: 12; stroke-linecap: round; stroke-dasharray: 200; stroke-dashoffset: 200; transition: stroke-dashoffset 0.5s ease-out, stroke 0.3s; }
-  .gauge-text { position: absolute; top: 50px; text-align: center; width: 100%; }
-  .gauge-score { font-size: 32px; font-weight: 800; color: var(--accent-green); line-height: 1; }
-  .gauge-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
-  .gauge-subtext { font-size: 11px; color: var(--accent-green); text-transform: uppercase; font-weight: 600; margin-top: 8px; }
-  .gauge-limits { display: flex; justify-content: space-between; width: 100%; font-size: 10px; color: var(--text-muted); margin-top: 8px; padding: 0 10px; }
-
-  /* Execution Controls */
-  .execution-controls { display: flex; flex-direction: column; gap: 10px; }
-  .execution-controls .btn { padding: 14px; }
-
-  /* Trades Table */
-  .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
-  .metric-card { background: var(--input-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 16px; }
-  .metric-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
-  .metric-value { font-size: 20px; font-weight: 700; font-family: var(--font-mono); }
-  .metric-value.green { color: var(--accent-green); }
-  
-  .table-wrapper { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
-  th { text-align: left; padding: 10px 12px; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--panel-border); }
-  td { padding: 12px; border-bottom: 1px solid #131b2a; }
-  .type-buy { color: var(--accent-green); font-weight: 700; }
-  .type-sell { color: var(--accent-red); font-weight: 700; }
-  .text-right { text-align: right; }
-  .text-center { text-align: center; }
-  .text-green { color: var(--accent-green); }
-  .text-muted { color: var(--text-muted); }
-
-  /* Hidden views */
-  .view { display: none; }
-  .view.active { display: block; }
-
-  /* Responsive */
-  @media (max-width: 1024px) {
-    .dashboard-grid { grid-template-columns: 1fr; }
-    .quality-grid { grid-template-columns: 1fr; }
-    .gauge-wrapper { padding: 20px 0; }
+  /* ---------- BUTTONS ---------- */
+  .btnrow{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+  button.btn{
+    flex:1; min-width:80px; padding:11px 14px;
+    background:#0a0f19; border:1px solid var(--border);
+    color:var(--text); font-size:11px; font-weight:600;
+    letter-spacing:.5px; text-transform:uppercase; cursor:pointer;
+    border-radius:4px; transition:all .15s;
+    display:flex; align-items:center; justify-content:center;
   }
+  button.btn:hover:not(:disabled){border-color:var(--accent); background:#101827}
+  button.btn:disabled{opacity:.35; cursor:not-allowed}
+  button.btn.primary{background:#1e3a8a; border-color:#2563eb; color:#fff}
+  button.btn.primary:hover:not(:disabled){background:#1d4ed8}
+  button.btn.green{background:#14532d; border-color:#15803d; color:#fff}
+  button.btn.green:hover:not(:disabled){background:#166534}
+  button.btn.red{background:#7f1d1d; border-color:#b91c1c; color:#fff}
+  button.btn.red:hover:not(:disabled){background:#991b1b}
+
+  /* ---------- GAUGE ---------- */
+  .gaugewrap{display:flex; flex-direction:column; align-items:center; padding:8px 0}
+  .gaugesvg{width:100%; max-width:320px; height:auto}
+  .gauge-label{
+    font-family:var(--mono); font-size:11px; color:var(--muted);
+    margin-top:8px; text-align:center;
+  }
+  .gauge-score{
+    font-family:var(--mono); font-size:32px; font-weight:700;
+    margin-top:-50px; color:var(--red); transition:color .3s;
+  }
+  .gauge-score.ok{color:var(--green)}
+  .gauge-meta{
+    display:flex; justify-content:space-around; width:100%;
+    margin-top:16px; font-family:var(--mono); font-size:11px;
+  }
+  .gauge-meta div{text-align:center}
+  .gauge-meta .lbl{color:var(--muted); display:block; margin-bottom:4px; font-size:10px}
+  .gauge-meta .v{color:var(--text); font-weight:600; font-size:13px}
+
+  /* ---------- CHART ---------- */
+  .chartwrap{
+    position:relative; width:100%; height:180px;
+    background:#0a0f19; border:1px solid var(--border);
+    border-radius:4px; overflow:hidden;
+  }
+  .chartwrap canvas{width:100%; height:100%; display:block}
+
+  /* ---------- TABLE ---------- */
+  table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11px}
+  th{
+    text-align:left; color:var(--muted); font-weight:600;
+    padding:8px 10px; border-bottom:1px solid var(--border);
+    text-transform:uppercase; letter-spacing:.5px; font-size:10px;
+  }
+  td{padding:8px 10px; border-bottom:1px solid #131b2b}
+  tr:last-child td{border-bottom:none}
+  .pill{
+    display:inline-block; padding:2px 8px; border-radius:3px;
+    font-size:10px; font-weight:600; text-transform:uppercase;
+  }
+  .pill.buy{background:#14532d; color:#86efac}
+  .pill.sell{background:#7f1d1d; color:#fca5a5}
+  .pill.close{background:#1e3a8a; color:#93c5fd}
+
+  /* ---------- LOG ---------- */
+  #log{
+    font-family:var(--mono); font-size:11px; max-height:200px;
+    overflow-y:auto; background:#0a0f19; border:1px solid var(--border);
+    border-radius:4px; padding:10px; line-height:1.7;
+  }
+  #log .t{color:var(--muted)}
+  #log .ok{color:var(--green)}
+  #log .err{color:var(--red)}
+  #log .info{color:#93c5fd}
+
+  .statusrow{
+    display:flex; justify-content:space-between; font-family:var(--mono);
+    font-size:11px; padding:6px 0; border-bottom:1px solid #131b2b;
+  }
+  .statusrow:last-child{border:none}
+  .statusrow .k{color:var(--muted)}
+  .statusrow .v{color:var(--text); font-weight:600}
 </style>
 </head>
 <body>
 
-<div class="app-container">
-  
-  <!-- Header -->
-  <header class="header">
-    <div class="logo-area">
-      <h1>E.<span>ROBOT</span></h1>
-      <p>Trend Trading Terminal</p>
-    </div>
-    <div class="status-bar">
-      <div class="status-tags">
-        <span class="tag" id="hdr-mt5-status">MT5: DISCONNECTED</span>
-        <span class="tag" id="hdr-account-type">ACCOUNT: —</span>
-        <span class="tag" id="hdr-auto-trading">AUTO-TRADING: INACTIVE</span>
-      </div>
-      <div class="status-details">
-        <span id="hdr-latency">Latency: — ms</span>
-        <span id="hdr-permission" style="color: var(--accent-red);">Execution Permission: DENIED</span>
-      </div>
-    </div>
-  </header>
+<header>
+  <div class="logo">E.<span>ROBOT</span></div>
+  <div class="tags">
+    <div class="tag" id="tag-mt5"><span class="dot"></span>MT5: <span class="val">DISCONNECTED</span></div>
+    <div class="tag" id="tag-auto"><span class="dot"></span>AUTO: <span class="val">IDLE</span></div>
+    <div class="tag" id="tag-lat"><span class="dot"></span>LAT: <span class="val">— ms</span></div>
+    <div class="tag" id="tag-bal"><span class="dot"></span>BAL: <span class="val">—</span></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="perm-state" id="perm-state">PERMISSION: NOT GRANTED</div>
+</header>
 
-  <!-- Navigation -->
-  <nav class="nav-tabs">
-    <button class="nav-tab active" data-target="dashboard">Dashboard & Signals</button>
-    <button class="nav-tab" data-target="connection">MT5 Connection</button>
-    <button class="nav-tab" data-target="risk">Risk Management</button>
-    <button class="nav-tab" data-target="history">Trade History</button>
-  </nav>
+<nav class="tabs">
+  <button class="active" data-tab="dashboard">Dashboard</button>
+  <button data-tab="connection">MT5 Connection</button>
+  <button data-tab="risk">Risk Management</button>
+  <button data-tab="history">Trade History</button>
+</nav>
 
-  <!-- Main View -->
-  <main class="view active" id="view-dashboard">
-    <div class="dashboard-grid">
-      
-      <!-- LEFT COLUMN -->
-      <div class="col-left">
-        
-        <!-- Connection Panel -->
+<main>
+  <!-- DASHBOARD -->
+  <div class="tabpage active" id="page-dashboard">
+    <div class="grid">
+      <div>
         <div class="panel">
-          <div class="panel-header">MT5 Account Connection</div>
-          <div class="field-group">
-            <label>Platform</label>
-            <select class="input-control" id="conn-platform">
-              <option value="mt5">MetaTrader 5 (MT5)</option>
+          <h3>Connection</h3>
+          <div class="field"><label>Server</label><input id="in-server" placeholder="Broker-Demo" value="MetaQuotes-Demo"></div>
+          <div class="field"><label>Login</label><input id="in-login" placeholder="12345678" value="12345678"></div>
+          <div class="field"><label>Password</label><input id="in-pass" type="password" placeholder="••••••••" value="demo"></div>
+          <button class="btn primary" id="btn-connect">CONNECT</button>
+        </div>
+        <div class="panel">
+          <h3>Risk Settings</h3>
+          <div class="field"><label>Symbol</label>
+            <select id="in-symbol">
+              <option value="XAUUSD">XAUUSD</option>
+              <option value="EURUSD">EURUSD</option>
+              <option value="BTCUSD">BTCUSD</option>
             </select>
           </div>
-          <div class="field-group">
-            <label>Broker Server</label>
-            <input type="text" class="input-control" id="conn-server" placeholder="e.g. Deriv-Server" value="Deriv-Server">
+          <div class="field"><label>Timeframe</label>
+            <select id="in-tf">
+              <option>M15</option><option selected>H1</option><option>H4</option><option>D1</option>
+            </select>
           </div>
-          <div class="field-group">
-            <label>Login ID</label>
-            <input type="text" class="input-control" id="conn-login" placeholder="e.g. 20498115" value="20498115">
-          </div>
-          <div class="field-group">
-            <label>Password</label>
-            <div class="input-wrapper">
-              <input type="password" class="input-control" id="conn-password" placeholder="••••••••" value="password123">
-            </div>
-          </div>
-          <button class="btn btn-outline" id="btn-connect">CONNECT E.ROBOT <div class="status-indicator" id="conn-dot" style="background: var(--accent-red); box-shadow: none;"></div></button>
+          <div class="field"><label>Min Quality Threshold</label><input id="in-minq" type="number" min="80" max="100" value="85"></div>
+          <div class="field"><label>Max Daily Loss ($)</label><input id="in-maxloss" type="number" value="200"></div>
+          <div class="field"><label>Lot Size</label><input id="in-lot" type="number" step="0.01" value="0.10"></div>
+          <div class="field"><label>SL (points)</label><input id="in-sl" type="number" value="300"></div>
+          <div class="field"><label>TP (points)</label><input id="in-tp" type="number" value="600"></div>
         </div>
-
-        <!-- Risk Panel -->
         <div class="panel">
-          <div class="panel-header">Risk Management</div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <div class="field-group">
-              <label>Lot Size</label>
-              <input type="number" class="input-control" id="risk-lot" value="0.05" step="0.01">
-            </div>
-            <div class="field-group">
-              <label>Risk Per Trade (%)</label>
-              <input type="number" class="input-control" id="risk-percent" value="1.5" step="0.1">
-            </div>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <div class="field-group">
-              <label>Stop Loss (Pips)</label>
-              <input type="number" class="input-control" id="risk-sl" value="25">
-            </div>
-            <div class="field-group">
-              <label>Take Profit (Pips)</label>
-              <input type="number" class="input-control" id="risk-tp" value="75">
-            </div>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <div class="field-group">
-              <label>Max Daily Loss ($)</label>
-              <input type="number" class="input-control" id="risk-max-loss" value="100.00">
-            </div>
-            <div class="field-group">
-              <label>Min Quality Threshold (%)</label>
-              <input type="number" class="input-control" id="risk-min-quality" value="85" min="80" max="100">
-            </div>
-          </div>
+          <h3>System Log</h3>
+          <div id="log"></div>
         </div>
-
       </div>
 
-      <!-- RIGHT COLUMN -->
-      <div class="col-right">
-        
-        <!-- Symbol & Quality Panel -->
+      <div>
         <div class="panel">
-          <div class="panel-header">Symbol & AI Trend Quality (80% - 100%)</div>
-          
-          <div class="quality-grid">
-            
-            <!-- Symbol & Timeframe -->
-            <div>
-              <div class="field-group">
-                <label>Symbol</label>
-                <select class="input-control" id="sym-symbol">
-                  <option value="XAUUSD">XAUUSD (Gold)</option>
-                  <option value="EURUSD">EURUSD</option>
-                  <option value="GBPUSD">GBPUSD</option>
-                  <option value="NZDUSD">NZDUSD</option>
-                  <option value="BTCUSD">BTCUSD</option>
-                  <option value="US30">US30</option>
-                </select>
-              </div>
-              <div class="field-group">
-                <label>Timeframe</label>
-                <select class="input-control" id="sym-timeframe">
-                  <option value="M5">M5</option>
-                  <option value="M15">M15</option>
-                  <option value="H1" selected>H1</option>
-                  <option value="H4">H4</option>
-                </select>
-              </div>
+          <h3>Signal Quality — <span id="lbl-symbol">XAUUSD</span> <span id="lbl-tf">H1</span></h3>
+          <div class="gaugewrap">
+            <svg class="gaugesvg" id="gauge" viewBox="0 0 300 170">
+              <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#1c2638" stroke-width="18" stroke-linecap="round"/>
+              <path id="gauge-fill" d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#ef4444" stroke-width="18" stroke-linecap="round"
+                    stroke-dasharray="0 999" style="transition:stroke-dasharray .6s ease, stroke .3s"/>
+              <text x="30" y="168" fill="#6b7d99" font-size="10" font-family="monospace">80</text>
+              <text x="255" y="168" fill="#6b7d99" font-size="10" font-family="monospace">100</text>
+            </svg>
+            <div class="gauge-score" id="gauge-score">—</div>
+            <div class="gauge-label">QUALITY SCORE</div>
+            <div class="gauge-meta">
+              <div><span class="lbl">TREND</span><span class="v" id="g-trend">—</span></div>
+              <div><span class="lbl">MOMENTUM</span><span class="v" id="g-mom">—</span></div>
+              <div><span class="lbl">DIRECTION</span><span class="v" id="g-dir">—</span></div>
             </div>
-
-            <!-- Gauge -->
-            <div class="gauge-wrapper">
-              <svg class="gauge-svg" viewBox="0 0 200 110">
-                <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
-                <path class="gauge-fill" id="quality-gauge" d="M 20 100 A 80 80 0 0 1 180 100" />
-              </svg>
-              <div class="gauge-text">
-                <div class="gauge-score" id="quality-score">0%</div>
-                <div class="gauge-label">AI TREND QUALITY</div>
-                <div class="gauge-subtext" id="quality-status">WAITING FOR SCAN</div>
-              </div>
-              <div class="gauge-limits">
-                <span>80% MINIMUM</span>
-                <span>100% MAXIMUM</span>
-              </div>
-            </div>
-
-            <!-- Chart Placeholder -->
-            <div class="chart-container">
-              <div class="chart-placeholder">
-                [Real-time MT5 Chart Feed]<br>
-                Requires Backend API integration.
-              </div>
-            </div>
-
-          </div>
-
-          <div style="margin-top: 16px; text-align: center; background: rgba(16, 185, 129, 0.1); color: var(--accent-green); font-size: 11px; padding: 6px; border-radius: 4px; font-weight: 600; border: 1px solid rgba(16, 185, 129, 0.3);">
-            80% - 100% FILTER: <span id="filter-status">ACTIVE & VALID</span>
           </div>
         </div>
 
-        <!-- Execution Panel -->
         <div class="panel">
-          <div class="execution-controls">
-            <button class="btn btn-green" id="btn-start" disabled>START E.ROBOT</button>
-            <button class="btn btn-red" id="btn-stop" disabled>STOP E.ROBOT</button>
-            <button class="btn btn-blue" id="btn-check-quality" disabled>CHECK E.ROBOT QUALITY</button>
-            <button class="btn btn-outline" id="btn-open" disabled>OPEN E.ROBOT ORDER</button>
-            <button class="btn btn-orange" id="btn-close-all" disabled>CLOSE ALL E.ROBOT</button>
+          <h3>Price Chart (placeholder)</h3>
+          <div class="chartwrap"><canvas id="chart"></canvas></div>
+        </div>
+
+        <div class="panel">
+          <h3>Execution</h3>
+          <div class="btnrow">
+            <button class="btn" id="btn-check" disabled>CHECK QUALITY</button>
+            <button class="btn green" id="btn-start" disabled>START</button>
+            <button class="btn red" id="btn-stop" disabled>STOP</button>
+            <button class="btn primary" id="btn-open" disabled>OPEN ORDER</button>
+            <button class="btn red" id="btn-close" disabled>CLOSE ALL</button>
           </div>
         </div>
 
-        <!-- Trade History Panel -->
         <div class="panel">
-          <div class="panel-header">Trade History & Performance Summary</div>
-          
-          <div class="metrics-row">
-            <div class="metric-card">
-              <div class="metric-label">Total Trades</div>
-              <div class="metric-value" id="met-total">0</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-label">Win Rate</div>
-              <div class="metric-value" id="met-winrate">0%</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-label">Net Profit</div>
-              <div class="metric-value green" id="met-profit">+$0.00</div>
-            </div>
-          </div>
-
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Symbol</th>
-                  <th>Type</th>
-                  <th>Lot</th>
-                  <th>Quality %</th>
-                  <th class="text-right">Result ($)</th>
-                </tr>
-              </thead>
-              <tbody id="trade-history-body">
-                <tr>
-                  <td colspan="6" class="text-center text-muted" style="padding: 20px;">No trades executed yet.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          
-          <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
-            <button class="btn btn-outline" id="btn-clear-history" style="width: auto; padding: 8px 16px;" disabled>CLEAR E.ROBOT HISTORY</button>
-          </div>
+          <h3>Open Positions</h3>
+          <table>
+            <thead><tr><th>Ticket</th><th>Symbol</th><th>Type</th><th>Lots</th><th>Open</th><th>P/L</th><th>Action</th></tr></thead>
+            <tbody id="tbody-pos"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No open positions</td></tr></tbody>
+          </table>
         </div>
 
+        <div class="panel">
+          <h3>Recent Trades</h3>
+          <table>
+            <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Lots</th><th>Price</th><th>P/L</th></tr></thead>
+            <tbody id="tbody-hist"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No trades yet</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
-  </main>
-</div>
+  </div>
+
+  <!-- CONNECTION TAB -->
+  <div class="tabpage" id="page-connection">
+    <div class="panel">
+      <h3>MT5 Connection Status</h3>
+      <div id="conn-detail">
+        <div class="statusrow"><span class="k">Server</span><span class="v" id="srv">—</span></div>
+        <div class="statusrow"><span class="k">Login</span><span class="v" id="lgn">—</span></div>
+        <div class="statusrow"><span class="k">Terminal</span><span class="v" id="term">—</span></div>
+        <div class="statusrow"><span class="k">Balance</span><span class="v" id="bal">—</span></div>
+        <div class="statusrow"><span class="k">Equity</span><span class="v" id="eq">—</span></div>
+        <div class="statusrow"><span class="k">Latency</span><span class="v" id="lat">—</span></div>
+        <div class="statusrow"><span class="k">Permission</span><span class="v" id="permd">NOT GRANTED</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RISK TAB -->
+  <div class="tabpage" id="page-risk">
+    <div class="panel">
+      <h3>Daily Risk Metrics</h3>
+      <div class="statusrow"><span class="k">Daily P/L</span><span class="v" id="r-pl">$0.00</span></div>
+      <div class="statusrow"><span class="k">Max Daily Loss</span><span class="v" id="r-max">$200.00</span></div>
+      <div class="statusrow"><span class="k">Kill-Switch</span><span class="v" id="r-kill" style="color:var(--green)">OK</span></div>
+      <div class="statusrow"><span class="k">Open Exposure</span><span class="v" id="r-exp">0.00 lots</span></div>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div class="tabpage" id="page-history">
+    <div class="panel">
+      <h3>Full Trade History</h3>
+      <table>
+        <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Lots</th><th>Price</th><th>P/L</th><th>Status</th></tr></thead>
+        <tbody id="tbody-full"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No trades yet</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
 
 <script>
-/**
- * E.ROBOT UI Controller & Mock API Layer
- * 
- * This script manages the state machine of the robot, enforces pre-trade 
- * checks, and updates the DOM. Replace the `api` object methods with real 
- * fetch() calls to bridge.js for actual MT5 execution.
- */
+/* =========================================================
+   E.ROBOT — Frontend Control Panel
+   ========================================================= */
+const API = 'http://127.0.0.1:8787';
 
-// --- State Management ---
 const state = {
-  connected: false,
   permissionGranted: false,
   tradingActive: false,
-  currentQuality: 0,
-  minQualityThreshold: 85,
+  connected: false,
+  quality: null,
+  minQuality: 85,
+  positions: [],
+  history: [],
   dailyPL: 0,
-  maxDailyLoss: 100,
-  trades: []
+  maxDailyLoss: 200,
+  autoLoop: null,
+  latency: 0,
 };
 
-// --- DOM Elements ---
-const el = {
-  hdrMt5: document.getElementById('hdr-mt5-status'),
-  hdrAccount: document.getElementById('hdr-account-type'),
-  hdrAuto: document.getElementById('hdr-auto-trading'),
-  hdrLatency: document.getElementById('hdr-latency'),
-  hdrPermission: document.getElementById('hdr-permission'),
-  
-  connServer: document.getElementById('conn-server'),
-  connLogin: document.getElementById('conn-login'),
-  connPassword: document.getElementById('conn-password'),
-  btnConnect: document.getElementById('btn-connect'),
-  connDot: document.getElementById('conn-dot'),
-  
-  gauge: document.getElementById('quality-gauge'),
-  qualityScore: document.getElementById('quality-score'),
-  qualityStatus: document.getElementById('quality-status'),
-  filterStatus: document.getElementById('filter-status'),
-  symSymbol: document.getElementById('sym-symbol'),
-  symTimeframe: document.getElementById('sym-timeframe'),
-  
-  riskLot: document.getElementById('risk-lot'),
-  riskSl: document.getElementById('risk-sl'),
-  riskTp: document.getElementById('risk-tp'),
-  riskMaxLoss: document.getElementById('risk-max-loss'),
-  riskMinQuality: document.getElementById('risk-min-quality'),
-  
-  btnStart: document.getElementById('btn-start'),
-  btnStop: document.getElementById('btn-stop'),
-  btnCheck: document.getElementById('btn-check-quality'),
-  btnOpen: document.getElementById('btn-open'),
-  btnCloseAll: document.getElementById('btn-close-all'),
-  btnClear: document.getElementById('btn-clear-history'),
-  
-  metTotal: document.getElementById('met-total'),
-  metWinrate: document.getElementById('met-winrate'),
-  metProfit: document.getElementById('met-profit'),
-  tableBody: document.getElementById('trade-history-body')
-};
-
-// --- Mock API Layer (Backend Integration Boundary) ---
-const api = {
-  connect: async (server, login, password) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        if (!server || !login || !password) resolve({ success: false, error: 'Missing credentials' });
-        else resolve({ success: true, account: login.slice(-4), latency: Math.floor(Math.random() * 20) + 5 });
-      }, 800);
-    });
-  },
-
-  getQuality: async (symbol, timeframe) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Generate realistic mock score: 75% to 98%
-        const score = Math.floor(Math.random() * 24) + 75;
-        resolve({ score, direction: score > 85 ? 'BUY' : 'SELL', isStrong: score >= 80 });
-      }, 600);
-    });
-  },
-
-  openOrder: async (payload) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // 65% Win Rate simulation
-        const isWin = Math.random() > 0.35;
-        const pnl = isWin ? (Math.random() * 50 + 15) : -(Math.random() * 30 + 10);
-        resolve({ 
-          ticket: Math.floor(Math.random() * 1000000),
-          symbol: payload.symbol,
-          type: payload.type,
-          lot: payload.lot,
-          quality: payload.quality,
-          result: pnl
-        });
-      }, 500);
-    });
-  }
-};
-
-// --- UI Update Logic ---
-
-function updateUI() {
-  // Header Statuses
-  if (state.connected) {
-    el.hdrMt5.textContent = 'MT5: CONNECTED';
-    el.hdrMt5.className = 'tag active';
-    el.hdrAccount.textContent = `ACCOUNT: ••••${el.connLogin.value.slice(-4)}`;
-    el.hdrLatency.textContent = 'Latency: 12ms';
-    el.connDot.style.background = 'var(--accent-green)';
-    el.connDot.style.boxShadow = '0 0 8px var(--accent-green)';
-    el.btnConnect.innerHTML = 'CONNECTED <div class="status-indicator"></div>';
-    el.btnConnect.disabled = true;
-  } else {
-    el.hdrMt5.textContent = 'MT5: DISCONNECTED';
-    el.hdrMt5.className = 'tag error';
-    el.hdrAccount.textContent = 'ACCOUNT: —';
-    el.hdrLatency.textContent = 'Latency: — ms';
-    el.connDot.style.background = 'var(--accent-red)';
-    el.connDot.style.boxShadow = 'none';
-    el.btnConnect.innerHTML = 'CONNECT E.ROBOT <div class="status-indicator" style="background: var(--accent-red); box-shadow: none;"></div>';
-    el.btnConnect.disabled = false;
-  }
-
-  // Permissions & Execution State
-  if (!state.connected) {
-    state.permissionGranted = false;
-    state.tradingActive = false;
-  }
-  
-  if (state.tradingActive) {
-    el.hdrAuto.textContent = 'AUTO-TRADING: ACTIVE';
-    el.hdrAuto.className = 'tag active';
-    el.hdrPermission.textContent = 'Execution Permission: GRANTED';
-    el.hdrPermission.style.color = 'var(--accent-green)';
-  } else if (state.permissionGranted) {
-    el.hdrAuto.textContent = 'AUTO-TRADING: ARMED';
-    el.hdrAuto.className = 'tag active';
-    el.hdrPermission.textContent = 'Execution Permission: GRANTED';
-    el.hdrPermission.style.color = 'var(--accent-green)';
-  } else {
-    el.hdrAuto.textContent = 'AUTO-TRADING: INACTIVE';
-    el.hdrAuto.className = 'tag';
-    el.hdrPermission.textContent = 'Execution Permission: DENIED';
-    el.hdrPermission.style.color = 'var(--accent-red)';
-  }
-
-  // Gauge & Quality
-  el.qualityScore.textContent = `${state.currentQuality}%`;
-  const isPassing = state.currentQuality >= state.minQualityThreshold;
-  
-  el.qualityScore.style.color = isPassing ? 'var(--accent-green)' : 'var(--accent-red)';
-  el.gauge.style.stroke = isPassing ? 'var(--accent-green)' : 'var(--accent-red)';
-  
-  // Dasharray = 200. If 100%, offset = 0. If 0%, offset = 200.
-  const offset = 200 - ((state.currentQuality / 100) * 200);
-  el.gauge.style.strokeDashoffset = offset;
-
-  if (state.currentQuality >= 80) {
-    el.qualityStatus.textContent = 'STRONG TREND DETECTED';
-    el.qualityStatus.style.color = 'var(--accent-green)';
-    el.filterStatus.textContent = 'ACTIVE & VALID';
-  } else {
-    el.qualityStatus.textContent = 'WEAK OR NO TREND';
-    el.qualityStatus.style.color = 'var(--accent-red)';
-    el.filterStatus.textContent = 'FILTERED OUT';
-  }
-
-  // Button Permissions
-  el.btnStart.disabled = !state.connected || state.tradingActive || state.currentQuality < state.minQualityThreshold;
-  el.btnStop.disabled = !state.tradingActive;
-  el.btnCheck.disabled = !state.connected;
-  el.btnOpen.disabled = !state.connected || !state.permissionGranted || state.currentQuality < state.minQualityThreshold;
-  el.btnCloseAll.disabled = !state.connected || state.trades.length === 0;
-  el.btnClear.disabled = state.trades.length === 0;
+/* ---------- Logging ---------- */
+function log(msg, kind='info'){
+  const el = document.getElementById('log');
+  const t = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="t">[${t}]</span> <span class="${kind}">${msg}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  while(el.children.length > 200) el.removeChild(el.firstChild);
 }
 
-function addTradeToLog(trade) {
-  state.trades.unshift(trade);
-  
-  const total = state.trades.length;
-  const wins = state.trades.filter(t => t.result > 0).length;
-  const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
-  const netProfit = state.trades.reduce((sum, t) => sum + t.result, 0);
-  
-  el.metTotal.textContent = total;
-  el.metWinrate.textContent = `${winRate}%`;
-  el.metProfit.textContent = `${netProfit >= 0 ? '+' : ''}$${netProfit.toFixed(2)}`;
-  el.metProfit.style.color = netProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+/* ---------- Tabs ---------- */
+document.querySelectorAll('nav.tabs button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tabpage').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('page-'+b.dataset.tab).classList.add('active');
+  });
+});
 
-  el.tableBody.innerHTML = state.trades.map(t => `
-    <tr>
-      <td class="text-muted">Just now</td>
-      <td>${t.symbol}</td>
-      <td class="${t.type === 'BUY' ? 'type-buy' : 'type-sell'}">${t.type}</td>
-      <td>${t.lot}</td>
-      <td>${t.quality}%</td>
-      <td class="text-right ${t.result >= 0 ? 'text-green' : 'type-sell'}">${t.result >= 0 ? '+' : ''}$${t.result.toFixed(2)}</td>
-    </tr>
-  `).join('');
-  
-  updateUI();
+/* ---------- Header / State rendering ---------- */
+function renderHeader(){
+  const mt5 = document.getElementById('tag-mt5');
+  const auto = document.getElementById('tag-auto');
+  const perm = document.getElementById('perm-state');
+
+  if(state.connected){
+    mt5.classList.add('on');
+    mt5.querySelector('.val').textContent = 'CONNECTED';
+  } else {
+    mt5.classList.remove('on');
+    mt5.querySelector('.val').textContent = 'DISCONNECTED';
+  }
+
+  if(state.tradingActive){
+    auto.classList.add('warn');
+    auto.querySelector('.val').textContent = 'ACTIVE';
+  } else if(state.connected){
+    auto.classList.add('on');
+    auto.querySelector('.val').textContent = 'ARMED';
+  } else {
+    auto.classList.remove('on','warn');
+    auto.querySelector('.val').textContent = 'IDLE';
+  }
+
+  if(state.tradingActive){
+    perm.className = 'perm-state active';
+    perm.textContent = 'AUTO-TRADING: ACTIVE';
+  } else if(state.permissionGranted){
+    perm.className = 'perm-state granted';
+    perm.textContent = 'AUTO-TRADING: ARMED';
+  } else {
+    perm.className = 'perm-state';
+    perm.textContent = 'PERMISSION: NOT GRANTED';
+  }
+
+  document.getElementById('permd').textContent = state.permissionGranted ? 'GRANTED' : 'NOT GRANTED';
+  document.getElementById('permd').style.color = state.permissionGranted ? 'var(--green)' : 'var(--red)';
 }
 
-// --- Event Listeners ---
+function renderButtons(){
+  const q = state.quality;
+  const aboveThreshold = q && q.score >= state.minQuality;
 
-// 1. Connect
-el.btnConnect.addEventListener('click', async () => {
-  el.btnConnect.innerHTML = 'CONNECTING...';
-  el.btnConnect.disabled = true;
+  document.getElementById('btn-connect').disabled = state.connected;
+  document.getElementById('btn-check').disabled = !state.connected;
+  document.getElementById('btn-start').disabled = !state.connected || state.tradingActive || !aboveThreshold;
+  document.getElementById('btn-stop').disabled = !state.tradingActive;
+  document.getElementById('btn-open').disabled = !state.connected || state.tradingActive || !aboveThreshold;
+  document.getElementById('btn-close').disabled = !state.connected || state.positions.length === 0;
+}
 
-  const res = await api.connect(el.connServer.value, el.connLogin.value, el.connPassword.value);
-  
-  if (res.success) {
-    state.connected = true;
-    state.permissionGranted = true;
-    state.currentQuality = 0; // Reset quality on connect
-    updateUI();
-  } else {
-    alert(`Connection Failed: ${res.error}`);
-    updateUI();
-  }
-});
+function renderGauge(){
+  const q = state.quality;
+  const fill = document.getElementById('gauge-fill');
+  const scoreEl = document.getElementById('gauge-score');
+  const dirEl = document.getElementById('g-dir');
+  const trendEl = document.getElementById('g-trend');
+  const momEl = document.getElementById('g-mom');
 
-// 2. Check Quality
-el.btnCheck.addEventListener('click', async () => {
-  el.btnCheck.textContent = 'SCANNING...';
-  el.btnCheck.disabled = true;
-  
-  const res = await api.getQuality(el.symSymbol.value, el.symTimeframe.value);
-  
-  state.currentQuality = res.score;
-  el.btnCheck.textContent = 'CHECK E.ROBOT QUALITY';
-  updateUI();
-});
-
-// 3. Start / Stop
-el.btnStart.addEventListener('click', () => {
-  if (state.currentQuality < state.minQualityThreshold) {
-    alert(`Cannot start. Current quality (${state.currentQuality}%) is below the minimum threshold (${state.minQualityThreshold}%).`);
+  if(!q){
+    fill.style.strokeDasharray = '0 999';
+    scoreEl.textContent = '—';
+    scoreEl.classList.remove('ok');
+    dirEl.textContent = '—';
+    trendEl.textContent = '—';
+    momEl.textContent = '—';
     return;
   }
-  state.tradingActive = true;
-  updateUI();
-});
 
-el.btnStop.addEventListener('click', () => {
-  state.tradingActive = false;
-  updateUI();
-});
+  // Map 80..100 to arc length (arc len ≈ π*120 ≈ 377)
+  const ARC = 377;
+  const pct = Math.max(0, Math.min(1, (q.score - 80) / 20));
+  fill.style.strokeDasharray = `${pct*ARC} 999`;
+  const ok = q.score >= state.minQuality;
+  fill.style.stroke = ok ? 'var(--green)' : 'var(--red)';
+  scoreEl.textContent = q.score;
+  scoreEl.classList.toggle('ok', ok);
+  dirEl.textContent = q.direction || '—';
+  trendEl.textContent = q.trend !== undefined ? q.trend : '—';
+  momEl.textContent = q.momentum !== undefined ? q.momentum : '—';
+}
 
-// 4. Open Order (Manual Pre-Trade Check)
-el.btnOpen.addEventListener('click', async () => {
-  // PRE-TRADE CHECKS
-  if (!state.connected) return alert('Not connected to MT5.');
-  if (state.currentQuality < state.minQualityThreshold) return alert('Quality below minimum threshold.');
-  
-  const lot = parseFloat(el.riskLot.value);
-  const maxLoss = parseFloat(el.riskMaxLoss.value);
-  
-  if (lot <= 0) return alert('Invalid lot size.');
-  if (state.dailyPL <= -maxLoss) return alert('Max daily loss limit reached. Trading halted.');
+/* ---------- Chart (high-DPI placeholder) ---------- */
+function renderChart(){
+  const cv = document.getElementById('chart');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  cv.width = rect.width * dpr;
+  cv.height = rect.height * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
 
-  // EXECUTE PAYLOAD
-  el.btnOpen.textContent = 'EXECUTING...';
-  el.btnOpen.disabled = true;
-  
-  const payload = {
-    symbol: el.symSymbol.value,
-    type: state.currentQuality > 85 ? 'BUY' : 'SELL', 
-    lot: lot,
-    sl: parseInt(el.riskSl.value),
-    tp: parseInt(el.riskTp.value),
-    quality: state.currentQuality
-  };
+  ctx.clearRect(0,0,W,H);
+  // grid
+  ctx.strokeStyle = '#131b2b'; ctx.lineWidth = 1;
+  for(let i=1;i<5;i++){ ctx.beginPath(); ctx.moveTo(0, H*i/5); ctx.lineTo(W, H*i/5); ctx.stroke(); }
+  for(let i=1;i<8;i++){ ctx.beginPath(); ctx.moveTo(W*i/8, 0); ctx.lineTo(W*i/8, H); ctx.stroke(); }
 
-  const tradeResult = await api.openOrder(payload);
-  
-  el.btnOpen.textContent = 'OPEN E.ROBOT ORDER';
-  addTradeToLog(tradeResult);
-});
-
-// 5. Close All
-el.btnCloseAll.addEventListener('click', () => {
-  state.tradingActive = false;
-  alert('CLOSE ALL COMMAND SENT TO EXECUTOR.\n\n(Visual state reset for demo)');
-  updateUI();
-});
-
-// 6. Clear History
-el.btnClear.addEventListener('click', () => {
-  if(confirm('Archive and clear trade history?')) {
-    state.trades = [];
-    el.tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding: 20px;">No trades executed yet.</td></tr>';
-    el.metTotal.textContent = '0';
-    el.metWinrate.textContent = '0%';
-    el.metProfit.textContent = '+$0.00';
-    el.metProfit.style.color = 'var(--accent-green)';
-    updateUI();
+  // synthetic candles
+  let price = H*0.5;
+  const n = 60, cw = W/n;
+  for(let i=0;i<n;i++){
+    const o = price;
+    const c = o + (Math.random()-0.5)*20;
+    const h = Math.max(o,c) + Math.random()*8;
+    const l = Math.min(o,c) - Math.random()*8;
+    const up = c >= o;
+    ctx.strokeStyle = ctx.fillStyle = up ? '#22c55e' : '#ef4444';
+    ctx.beginPath();
+    ctx.moveTo(i*cw+cw/2, h); ctx.lineTo(i*cw+cw/2, l); ctx.stroke();
+    ctx.fillRect(i*cw+cw*0.2, Math.min(o,c), cw*0.6, Math.abs(c-o)||1);
+    price = c;
   }
+  // price axis overlay
+  ctx.fillStyle = '#6b7d99'; ctx.font = '10px monospace';
+  ctx.fillText('XAUUSD · '+document.getElementById('in-tf').value, 8, 14);
+}
+window.addEventListener('resize', renderChart);
+
+/* ---------- Positions / history tables ---------- */
+function renderPositions(){
+  const tb = document.getElementById('tbody-pos');
+  if(state.positions.length === 0){
+    tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No open positions</td></tr>';
+    return;
+  }
+  tb.innerHTML = state.positions.map(p=>`
+    <tr>
+      <td>${p.ticket}</td><td>${p.symbol}</td>
+      <td><span class="pill ${p.type.toLowerCase()==='buy'?'buy':'sell'}">${p.type}</span></td>
+      <td>${p.lots.toFixed(2)}</td>
+      <td>${p.open_price.toFixed(2)}</td>
+      <td style="color:${p.pl>=0?'var(--green)':'var(--red)'}">${p.pl.toFixed(2)}</td>
+      <td>—</td>
+    </tr>`).join('');
+}
+
+function renderHistory(){
+  const rows = state.history.slice(-20).reverse();
+  const html = rows.length === 0
+    ? '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No trades yet</td></tr>'
+    : rows.map(h=>`
+      <tr>
+        <td>${new Date(h.time).toLocaleString()}</td>
+        <td>${h.symbol}</td>
+        <td><span class="pill ${h.side.toLowerCase()}">${h.side}</span></td>
+        <td>${h.lots.toFixed(2)}</td>
+        <td>${h.price.toFixed(2)}</td>
+        <td style="color:${h.pl>=0?'var(--green)':'var(--red)'}">${h.pl.toFixed(2)}</td>
+        <td>${h.status||'CLOSED'}</td>
+      </tr>`).join('');
+  document.getElementById('tbody-hist').innerHTML = html.replaceAll('colspan="7"','colspan="6"');
+  document.getElementById('tbody-full').innerHTML = html;
+}
+
+function updateRiskPanel(){
+  document.getElementById('r-pl').textContent = `$${state.dailyPL.toFixed(2)}`;
+  document.getElementById('r-pl').style.color = state.dailyPL >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('r-max').textContent = `$${state.maxDailyLoss.toFixed(2)}`;
+  const kill = state.dailyPL <= -state.maxDailyLoss;
+  document.getElementById('r-kill').textContent = kill ? 'TRIGGERED' : 'OK';
+  document.getElementById('r-kill').style.color = kill ? 'var(--red)' : 'var(--green)';
+  document.getElementById('r-exp').textContent = `${state.positions.reduce((a,p)=>a+p.lots,0).toFixed(2)} lots`;
+}
+
+function renderAll(){
+  renderHeader(); renderButtons(); renderGauge();
+  renderPositions(); renderHistory(); updateRiskPanel();
+}
+
+/* ---------- API helpers ---------- */
+async function api(path, opts={}){
+  const t0 = performance.now();
+  const r = await fetch(API+path, opts);
+  state.latency = Math.round(performance.now()-t0);
+  document.getElementById('tag-lat').querySelector('.val').textContent = state.latency+' ms';
+  document.getElementById('lat').textContent = state.latency+' ms';
+  return r;
+}
+
+/* ---------- Actions ---------- */
+async function doConnect(){
+  const server = document.getElementById('in-server').value.trim();
+  const login  = document.getElementById('in-login').value.trim();
+  const password = document.getElementById('in-pass').value;
+  log(`Connecting to ${server} (${login})…`);
+  try{
+    const r = await api('/connect', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({server, login, password}),
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    if(data.connected){
+      state.connected = true;
+      state.permissionGranted = true;
+      document.getElementById('srv').textContent = server;
+      document.getElementById('lgn').textContent = login;
+      document.getElementById('term').textContent = data.terminal || 'MT5';
+      document.getElementById('bal').textContent = '$'+(data.balance||0).toFixed(2);
+      document.getElementById('eq').textContent = '$'+(data.equity||0).toFixed(2);
+      document.getElementById('tag-bal').querySelector('.val').textContent = '$'+(data.balance||0).toFixed(0);
+      log('MT5 connected. Permission granted.', 'ok');
+    } else {
+      throw new Error(data.error||'unknown');
+    }
+  }catch(e){
+    log('Connect failed: '+e.message, 'err');
+    state.connected = false; state.permissionGranted = false;
+  }
+  renderAll();
+}
+
+async function doCheckQuality(){
+  const symbol = document.getElementById('in-symbol').value;
+  const tf = document.getElementById('in-tf').value;
+  log(`Checking quality ${symbol} ${tf}…`);
+  try{
+    const r = await api(`/quality?symbol=${symbol}&timeframe=${tf}`);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const q = await r.json();
+    state.quality = q;
+    log(`Quality: ${q.score} · ${q.direction} · ${q.isStrong?'STRONG':'WEAK'}`, q.isStrong?'ok':'info');
+  }catch(e){
+    log('Quality check failed: '+e.message, 'err');
+    state.quality = null;
+  }
+  renderAll();
+}
+
+async function doStart(){
+  if(!state.quality || state.quality.score < state.minQuality){
+    log('Cannot start: quality below threshold', 'err'); return;
+  }
+  try{
+    const r = await api('/command', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'START', payload:{symbol:document.getElementById('in-symbol').value}}),
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    state.tradingActive = true;
+    log('Auto-trading ACTIVE', 'ok');
+    startAutoLoop();
+  }catch(e){ log('Start failed: '+e.message, 'err'); }
+  renderAll();
+}
+
+async function doStop(){
+  try{
+    const r = await api('/command', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'STOP'}),
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    state.tradingActive = false;
+    stopAutoLoop();
+    log('Auto-trading STOPPED', 'info');
+  }catch(e){ log('Stop failed: '+e.message, 'err'); }
+  renderAll();
+}
+
+async function doOpen(){
+  if(!state.quality || state.quality.score < state.minQuality){
+    log('Cannot open: quality below threshold', 'err'); return;
+  }
+  const symbol = document.getElementById('in-symbol').value;
+  const lots = parseFloat(document.getElementById('in-lot').value);
+  const sl = parseInt(document.getElementById('in-sl').value);
+  const tp = parseInt(document.getElementById('in-tp').value);
+  try{
+    const r = await api('/command', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'OPEN', payload:{symbol, lots, sl, tp, direction: state.quality.direction}}),
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    log('Order opened: '+(d.ticket||'—'), 'ok');
+    refreshState();
+  }catch(e){ log('Open failed: '+e.message, 'err'); }
+}
+
+async function doCloseAll(){
+  try{
+    const r = await api('/command', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'CLOSE_ALL'}),
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    log('CLOSE_ALL executed', 'ok');
+    refreshState();
+  }catch(e){ log('Close all failed: '+e.message, 'err'); }
+}
+
+/* ---------- State poll ---------- */
+async function refreshState(){
+  try{
+    const r = await api('/state');
+    if(!r.ok) throw new Error();
+    const s = await r.json();
+    if(s.connected === false && state.connected){
+      state.connected = false; state.permissionGranted = false; state.tradingActive = false;
+      stopAutoLoop();
+      log('Bridge reports DISCONNECTED', 'err');
+    }
+    state.positions = s.positions || [];
+    state.dailyPL = s.dailyPL || 0;
+    state.history = s.history || state.history;
+    renderAll();
+  }catch(e){
+    if(state.connected){
+      state.connected = false; state.permissionGranted = false; state.tradingActive = false;
+      stopAutoLoop(); log('Bridge unreachable — DISCONNECTED', 'err'); renderAll();
+    }
+  }
+}
+
+/* ---------- Auto loop ---------- */
+function startAutoLoop(){
+  stopAutoLoop();
+  state.autoLoop = setInterval(async ()=>{
+    if(!state.tradingActive) return;
+    await doCheckQuality();
+    if(state.quality && state.quality.score >= state.minQuality){
+      log('Auto: quality OK → opening order', 'info');
+      await doOpen();
+    } else {
+      log('Auto: quality below threshold → skip', 'info');
+    }
+    refreshState();
+  }, 15000);
+}
+function stopAutoLoop(){
+  if(state.autoLoop){ clearInterval(state.autoLoop); state.autoLoop = null; }
+}
+
+/* ---------- Wire buttons ---------- */
+document.getElementById('btn-connect').addEventListener('click', doConnect);
+document.getElementById('btn-check').addEventListener('click', doCheckQuality);
+document.getElementById('btn-start').addEventListener('click', doStart);
+document.getElementById('btn-stop').addEventListener('click', doStop);
+document.getElementById('btn-open').addEventListener('click', doOpen);
+document.getElementById('btn-close').addEventListener('click', doCloseAll);
+document.getElementById('in-minq').addEventListener('input', e=>{
+  state.minQuality = parseInt(e.target.value)||85; renderAll();
+});
+document.getElementById('in-maxloss').addEventListener('input', e=>{
+  state.maxDailyLoss = parseFloat(e.target.value)||200; renderAll();
+});
+document.getElementById('in-symbol').addEventListener('change', e=>{
+  document.getElementById('lbl-symbol').textContent = e.target.value;
+});
+document.getElementById('in-tf').addEventListener('change', e=>{
+  document.getElementById('lbl-tf').textContent = e.target.value;
 });
 
-// Init
-updateUI();
+/* ---------- Init ---------- */
+renderChart();
+renderAll();
+log('E.ROBOT ready. Connect to MT5 to begin.', 'info');
+setInterval(refreshState, 5000);
 </script>
 </body>
 </html>
