@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>E.ROBOT | Trend Terminal</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #06090f; --panel: #0d131f; --panel2: #111a29;
+      --border: #1c2638; --text: #e8eefc; --muted: #91a0b7;
+      --cyan: #4ff0d4; --green: #3ddc97; --red: #ff5c7a; --amber: #ffc65c;
+      --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    }
+    * { box-sizing: border-box }
+    body { margin: 0; color: var(--text); background: var(--bg); font: 14px var(--sans) }
+    button, input, select { font: inherit }
+    .mono, td, .metric { font-family: var(--mono); font-variant-numeric: tabular-nums }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 22px; border-bottom:1px solid var(--border); background:var(--panel) }
+    .brand { font-size:20px; font-weight:850; letter-spacing:.12em }
+    .brand small { display:block; color:var(--muted); font-size:11px; letter-spacing:.04em; font-weight:500 }
+    .status { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px }
+    .tag { padding:7px 10px; border:1px solid var(--border); border-radius:8px; color:var(--muted); background:var(--panel2); font-size:12px }
+    .tag.good { color:var(--green) } .tag.warn { color:var(--amber) } .tag.bad { color:var(--red) }
+    nav { display:flex; gap:6px; padding:10px 22px; border-bottom:1px solid var(--border); overflow:auto; background:#090e17 }
+    nav button, .btn { padding:9px 12px; border:1px solid var(--border); border-radius:7px; color:var(--text); background:var(--panel2); cursor:pointer; font-weight:700 }
+    nav button.active { color:var(--cyan); border-color:#4ff0d488; background:#4ff0d411 }
+    button:disabled { opacity:.42; cursor:not-allowed }
+    .btn.primary { color:#06120f; background:var(--cyan); border-color:var(--cyan) }
+    .btn.green { color:#06140e; background:var(--green); border-color:var(--green) }
+    .btn.red { color:#1e060b; background:var(--red); border-color:var(--red) }
+    .btn.amber { color:#211704; background:var(--amber); border-color:var(--amber) }
+    main { max-width:1420px; margin:auto; padding:18px }
+    .view[hidden] { display:none }
+    .grid { display:grid; grid-template-columns:minmax(280px, .82fr) minmax(0, 1.5fr); gap:14px }
+    .stack { display:grid; align-content:start; gap:14px }
+    .panel, .kpi { padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--panel) }
+    h1 { margin:0; font-size:17px } h2 { margin:0 0 14px; font-size:14px; letter-spacing:.04em }
+    .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px }
+    .kpi-label { color:var(--muted); font-size:12px } .kpi-value { margin-top:8px; font-size:21px; font-weight:750 }
+    label { display:grid; gap:5px; margin-bottom:11px; color:var(--muted); font-size:12px }
+    input, select { width:100%; min-height:36px; padding:8px; border:1px solid var(--border); border-radius:6px; color:var(--text); background:#080d16 }
+    input:focus, select:focus { outline:1px solid var(--cyan) }
+    input[type=checkbox], input[type=radio] { width:auto; min-height:0; accent-color:var(--cyan) }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center }
+    .checks { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px }
+    .check { display:flex; gap:6px; align-items:center; margin:0; padding:7px 9px; border:1px solid var(--border); border-radius:6px; background:var(--panel2); color:var(--text) }
+    .message { min-height:34px; margin-top:10px; padding:9px; border:1px solid var(--border); border-radius:6px; color:var(--muted); background:#080d16 }
+    .feed { max-height:155px; overflow:auto; padding:8px; border:1px solid var(--border); border-radius:6px; background:#080d16; font:11px/1.6 var(--mono); font-variant-numeric:tabular-nums }
+    .feed div { border-bottom:1px solid #1c263866; overflow-wrap:anywhere }
+    .info { color:var(--muted) } .ok { color:var(--green) } .warn { color:var(--amber) } .err { color:var(--red) }
+    .gauge-wrap { display:grid; place-items:center; min-height:140px }
+    svg { width:min(280px,100%); height:150px; overflow:visible }
+    .chart-placeholder { display:grid; place-items:center; height:95px; border:1px dashed var(--border); border-radius:7px; color:var(--muted); background:repeating-linear-gradient(135deg,#0d131f,#0d131f 8px,#101827 8px,#101827 16px) }
+    .table-wrap { overflow:auto }
+    table { width:100%; border-collapse:collapse; min-width:720px }
+    th,td { padding:9px 8px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; font-size:12px }
+    th { color:var(--muted); font:700 11px var(--sans); text-transform:uppercase }
+    .side-buy { color:var(--green) } .side-sell { color:var(--red) }
+    .subtle { color:var(--muted); font-size:12px }
+    @media(max-width:850px) { header { align-items:flex-start; flex-direction:column } .status { justify-content:flex-start } .grid { grid-template-columns:1fr } .kpis { grid-template-columns:repeat(2,1fr) } }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">E.ROBOT<small>MT5 TREND TERMINAL</small></div>
+    <div class="status">
+      <span class="tag" id="mtStatus" aria-live="polite">MT5: DISCONNECTED</span>
+      <span class="tag" id="autoStatus">AUTO-TRADING: OFF</span>
+      <span class="tag" id="latency">LATENCY: —</span>
+      <span class="tag warn" id="permission">PERMISSION: LOCKED</span>
+      <button class="tag warn" id="modeButton" type="button">SIMULATION</button>
+    </div>
+  </header>
+  <nav aria-label="Views">
+    <button class="active" data-view="dashboard">Dashboard</button>
+    <button data-view="connection">MT5 Connection</button>
+    <button data-view="risk">Risk Management</button>
+    <button data-view="history">Trade History</button>
+  </nav>
+
+  <main>
+    <section class="view" id="dashboard">
+      <div class="kpis">
+        <article class="kpi"><div class="kpi-label">Quality Score</div><div class="kpi-value metric" id="kpiQuality">—</div></article>
+        <article class="kpi"><div class="kpi-label">Open Positions</div><div class="kpi-value metric" id="kpiOpen">0</div></article>
+        <article class="kpi"><div class="kpi-label">Closed Trades</div><div class="kpi-value metric" id="kpiClosed">0</div></article>
+        <article class="kpi"><div class="kpi-label">Daily P/L</div><div class="kpi-value metric" id="kpiPL">$0.00</div></article>
+      </div>
+      <div class="grid">
+        <div class="stack">
+          <article class="panel">
+            <h2>CONNECTION</h2>
+            <label>Platform<select id="platform"><option>MT5</option><option>MT4</option></select></label>
+            <label>Account type<select id="accountType"><option>Demo</option><option>Live</option></select></label>
+            <label>Broker server<input id="server" autocomplete="off"></label>
+            <label>Login ID<input id="login" inputmode="numeric" autocomplete="off"></label>
+            <label>Password<input id="password" type="password" autocomplete="new-password"></label>
+            <div class="row"><button class="btn primary" id="connectButton">CONNECT</button><button class="btn red" id="disconnectButton" disabled>DISCONNECT</button></div>
+            <div class="message" id="connectionMessage" aria-live="polite">Disconnected. Credentials are sent only to the loopback bridge in LIVE mode.</div>
+          </article>
+          <article class="panel">
+            <h2>RISK SETTINGS</h2>
+            <label>Minimum quality threshold<input id="threshold" type="number" min="80" max="100" value="80"></label>
+            <label>Stop loss (points)<input id="stopLoss" type="number" min="1" value="100"></label>
+            <label>Take profit (points)<input id="takeProfit" type="number" min="1" value="150"></label>
+            <label>Max daily loss<input id="maxDailyLoss" type="number" min="1" value="500"></label>
+            <label>Sizing mode<select id="sizing"><option value="fixed">Fixed lot</option><option value="risk">Risk %</option></select></label>
+            <label id="lotLabel">Lot size<input id="lot" type="number" min="0.01" step="0.01" value="0.10"></label>
+            <label id="riskLabel" hidden>Risk percent<input id="riskPercent" type="number" min="0.01" max="5" step="0.1" value="1"></label>
+          </article>
+        </div>
+
+        <div class="stack">
+          <article class="panel">
+            <h2>SYMBOL / QUALITY GAUGE</h2>
+            <div class="checks" id="symbols">
+              <label class="check"><input type="checkbox" value="XAUUSD" checked>XAUUSD</label>
+              <label class="check"><input type="checkbox" value="EURUSD" checked>EURUSD</label>
+              <label class="check"><input type="checkbox" value="GBPUSD">GBPUSD</label>
+              <label class="check"><input type="checkbox" value="NZDUSD">NZDUSD</label>
+              <label class="check"><input type="checkbox" value="BTCUSD">BTCUSD</label>
+              <label class="check"><input type="checkbox" value="US30">US30</label>
+            </div>
+            <label>Timeframe<select id="timeframe"><option>M5</option><option>M15</option><option selected>H1</option><option>H4</option></select></label>
+            <div class="gauge-wrap">
+              <svg viewBox="0 0 240 145" role="img" aria-label="Quality score gauge">
+                <path d="M30 125 A90 90 0 0 1 210 125" fill="none" stroke="#1c2638" stroke-width="16" stroke-linecap="round"/>
+                <path id="gaugeArc" d="M30 125 A90 90 0 0 1 210 125" fill="none" stroke="#ff5c7a" stroke-width="16" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/>
+                <text x="120" y="100" text-anchor="middle" fill="#e8eefc" font-size="32" font-family="ui-monospace,monospace" id="gaugeText">—%</text>
+                <text x="120" y="125" text-anchor="middle" fill="#91a0b7" font-size="11">80% TRADE THRESHOLD</text>
+              </svg>
+            </div>
+            <div class="row"><button class="btn primary" id="qualityButton" disabled>CHECK QUALITY</button><button class="btn" id="refreshButton">REFRESH STATE</button></div>
+            <div class="chart-placeholder" aria-label="Chart placeholder">Price chart placeholder · closed-bar feed</div>
+          </article>
+          <article class="panel">
+            <h2>EXECUTION</h2>
+            <div class="row">
+              <button class="btn green" id="startButton" disabled>START</button>
+              <button class="btn amber" id="stopButton" disabled>STOP</button>
+              <button class="btn" id="openButton" disabled>OPEN ORDER</button>
+              <button class="btn red" id="closeButton" disabled>CLOSE ALL</button>
+            </div>
+            <div class="message" id="executionMessage" aria-live="polite">Trading permission is locked.</div>
+            <h2 style="margin-top:16px">TRADE HISTORY</h2>
+            <div class="table-wrap">
+              <table><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Status</th><th>P/L</th></tr></thead>
+              <tbody id="historyRows"><tr><td colspan="5" class="subtle">No trades in this session.</td></tr></tbody></table>
+            </div>
+            <h2 style="margin-top:16px">EVENT FEED</h2><div class="feed" id="feed" aria-live="polite"></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="connection" hidden>
+      <article class="panel">
+        <h2>MT5 CONNECTION</h2>
+        <p class="subtle">The browser is a control panel. LIVE credentials are posted to the loopback bridge and are not saved locally.</p>
+        <button class="btn" id="connectionTabButton">Go to connection controls</button>
+      </article>
+    </section>
+    <section class="view" id="risk" hidden>
+      <article class="panel"><h2>RISK MANAGEMENT</h2><p class="subtle">Risk controls are editable in the Dashboard. The executor validates stops, size, and daily loss against live broker information before orders.</p></article>
+    </section>
+    <section class="view" id="history" hidden>
+      <article class="panel"><h2>TRADE HISTORY</h2><p class="subtle">The dashboard history table is populated from the current executor state in LIVE mode.</p></article>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+    const BRIDGE = "http://127.0.0.1:8787";
+    const $ = id => document.getElementById(id);
+    const state = {
+      mode: "SIMULATION", connected: false, permissionGranted: false,
+      tradingActive: false, quality: null, positions: [], closedTrades: [],
+      dailyPL: 0, queue: Promise.resolve(), seq: 0, seen: new Set(),
+      loop: null, poll: null
+    };
+
+    function log(text, kind = "info") {
+      const row = document.createElement("div");
+      row.className = kind;
+      row.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+      $("feed").prepend(row);
+    }
+    function message(id, text) { $(id).textContent = text; }
+    function enabledSymbols() {
+      return [...document.querySelectorAll("#symbols input:checked")].map(x => x.value);
+    }
+    function validInputs() {
+      const threshold = Number($("threshold").value);
+      const sizing = $("sizing").value;
+      return threshold >= 80 && threshold <= 100 && Number($("stopLoss").value) > 0 &&
+        Number($("takeProfit").value) > 0 && Number($("maxDailyLoss").value) > 0 &&
+        (sizing === "fixed" ? Number($("lot").value) > 0 :
+          Number($("riskPercent").value) > 0 && Number($("riskPercent").value) <= 5);
+    }
+    function qualityPasses() {
+      return state.quality && Number(state.quality.score) >= Number($("threshold").value) &&
+        state.quality.momentum !== false && state.quality.isStrong !== false &&
+        Date.now() - Date.parse(state.quality.evaluatedAt || new Date().toISOString()) <= 300000;
+    }
+    function canTrade() {
+      return state.connected && state.permissionGranted && validInputs() && enabledSymbols().length > 0;
+    }
+    function updateUI() {
+      const canStart = canTrade() && qualityPasses();
+      $("mtStatus").textContent = `MT5: ${state.connected ? "CONNECTED" : "DISCONNECTED"}`;
+      $("mtStatus").className = `tag ${state.connected ? "good" : "bad"}`;
+      $("autoStatus").textContent = `AUTO-TRADING: ${state.tradingActive ? "ACTIVE" : state.permissionGranted ? "ARMED" : "OFF"}`;
+      $("autoStatus").className = `tag ${state.tradingActive ? "good" : ""}`;
+      $("permission").textContent = `PERMISSION: ${state.permissionGranted ? "GRANTED" : "LOCKED"}`;
+      $("permission").className = `tag ${state.permissionGranted ? "good" : "warn"}`;
+      $("connectButton").disabled = state.connected;
+      $("disconnectButton").disabled = !state.connected;
+      $("qualityButton").disabled = !state.permissionGranted;
+      $("startButton").disabled = !canStart || state.tradingActive;
+      $("stopButton").disabled = !state.tradingActive;
+      $("openButton").disabled = !canStart;
+      $("closeButton").disabled = !state.connected || !state.positions.length;
+      $("kpiQuality").textContent = state.quality ? `${state.quality.score}%` : "—";
+      $("gaugeText").textContent = state.quality ? `${state.quality.score}%` : "—%";
+      const score = state.quality ? Math.max(0, Math.min(100, Number(state.quality.score))) : 0;
+      $("gaugeArc").setAttribute("stroke-dasharray", `${score} ${100-score}`);
+      $("gaugeArc").setAttribute("stroke", score >= Number($("threshold").value) ? "#3ddc97" : "#ff5c7a");
+      $("kpiOpen").textContent = state.positions.length;
+      $("kpiClosed").textContent = state.closedTrades.length;
+      $("kpiPL").textContent = `$${Number(state.dailyPL).toFixed(2)}`;
+    }
+    async function api(path, body) {
+      const response = await fetch(`${BRIDGE}${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        headers: body === undefined ? {} : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Bridge error ${response.status}`);
+      return data;
+    }
+    function commandId() { return `${state.mode}-${Date.now()}-${++state.seq}`; }
+    function command(action, payload = {}, preempt = false) {
+      const requestId = commandId();
+      if (state.seen.has(requestId)) return Promise.resolve();
+      state.seen.add(requestId);
+      const run = async () => {
+        if (state.mode === "LIVE") {
+          const result = await api("/command", {
+            action, requestId, payload,
+            priority: preempt ? "preempt" : undefined
+          });
+          log(`${action}: ${result.status || "submitted"} · ${requestId}`, "ok");
+          await refreshState();
+        } else {
+          simulateCommand(action, requestId, payload);
+        }
+      };
+      if (preempt) state.queue = Promise.resolve().then(run);
+      else state.queue = state.queue.then(run);
+      state.queue = state.queue.catch(error => {
+        log(`${action} rejected: ${error.message}`, "err");
+        message("executionMessage", error.message);
+      });
+      return state.queue;
+    }
+    function config() {
+      return {
+        sizingMode: $("sizing").value, lot: Number($("lot").value),
+        riskPercent: Number($("riskPercent").value),
+        stopLoss: Number($("stopLoss").value), takeProfit: Number($("takeProfit").value),
+        maxDailyLoss: Number($("maxDailyLoss").value), threshold: Number($("threshold").value),
+        symbols: enabledSymbols(), timeframe: $("timeframe").value
+      };
+    }
+    function simulateCommand(action, requestId) {
+      if (action === "START") {
+        if (!canTrade() || !qualityPasses()) throw new Error("START rejected: quality or permission gate failed.");
+        state.tradingActive = true;
+        clearInterval(state.loop);
+        state.loop = setInterval(() => {
+          if (!qualityPasses() || !state.connected) return;
+          log("Simulation strategy scan passed; no real orders are placed.", "info");
+        }, 5000);
+      } else if (action === "STOP") {
+        state.tradingActive = false;
+        clearInterval(state.loop);
+        state.loop = null;
+      } else if (action === "OPEN") {
+        if (!canTrade() || !qualityPasses()) throw new Error("OPEN rejected: quality or permission gate failed.");
+        state.positions.push({
+          time: new Date().toLocaleString(), symbol: state.quality.symbol || enabledSymbols()[0],
+          side: state.quality.direction === "Bearish" ? "SELL" : "BUY", status: "Open", profit: 0
+        });
+      } else if (action === "CLOSE_ALL") {
+        state.positions.forEach((p, i) => {
+          p.status = "Closed";
+          p.profit = (([...requestId].reduce((a,c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) + i) % 2000) / 1000 - 1;
+          state.closedTrades.push(p);
+        });
+        state.positions = [];
+      }
+      log(`${action} completed in simulation · ${requestId}`, "ok");
+      renderHistory(); updateUI();
+    }
+    function renderHistory() {
+      const rows = [...state.positions, ...state.closedTrades].slice().reverse();
+      $("historyRows").innerHTML = rows.length ? rows.map(t =>
+        `<tr><td>${escapeHtml(t.time || t.entry || "—")}</td><td>${escapeHtml(t.symbol || "—")}</td>
+        <td class="${t.side === "BUY" ? "side-buy" : "side-sell"}">${escapeHtml(t.side || "—")}</td>
+        <td>${escapeHtml(t.status || t.result || "Open")}</td><td>${Number(t.profit || t.net || 0).toFixed(2)}</td></tr>`
+      ).join("") : `<tr><td colspan="5" class="subtle">No trades in this session.</td></tr>`;
+    }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    }
+    async function refreshState() {
+      if (state.mode !== "LIVE") { updateUI(); return; }
+      try {
+        const data = await api("/state");
+        state.connected = !!data.connected;
+        state.permissionGranted = state.connected && !!data.heartbeat;
+        state.tradingActive = !!data.running;
+        state.positions = data.positions || [];
+        state.closedTrades = data.closedTrades || [];
+        state.dailyPL = Number(data.dailyPL || 0);
+        if (!state.connected) {
+          state.permissionGranted = false;
+          $("mtStatus").textContent = "MT5: DISCONNECTED";
+        }
+        renderHistory(); updateUI();
+      } catch (e) {
+        state.connected = false; state.permissionGranted = false;
+        state.tradingActive = false;
+        log(`State unavailable: ${e.message}`, "err");
+        updateUI();
+      }
+    }
+    $("connectButton").addEventListener("click", async () => {
+      const fields = ["server","login","password"];
+      if (fields.some(id => !$(id).value.trim())) {
+        message("connectionMessage", "Connection rejected: server, login, and password are required."); return;
+      }
+      if ($("accountType").value === "Live" && !confirm("LIVE account selected. Live trading can lose money. Continue?")) return;
+      if (state.mode === "SIMULATION") {
+        state.connected = true; state.permissionGranted = true;
+        state.accountType = $("accountType").value;
+        $("password").value = "";
+        message("connectionMessage", "Simulation connected locally. No broker was contacted.");
+        log("Simulation connection established.", "ok");
+      } else {
+        const password = $("password").value;
+        try {
+          const data = await api("/connect", {
+            platform: $("platform").value, accountType: $("accountType").value,
+            server: $("server").value.trim(), login: $("login").value.trim(), password
+          });
+          state.connected = !!data.connected;
+          state.permissionGranted = state.connected && !!data.heartbeat;
+          $("password").value = "";
+          state.poll = setInterval(refreshState, 2000);
+          message("connectionMessage", "LIVE bridge connection established.");
+          log("LIVE MT5 connection established.", "ok");
+        } catch (e) {
+          $("password").value = "";
+          message("connectionMessage", `Connection failed: ${e.message}`);
+          log(`Connection failed: ${e.message}`, "err");
+        }
+      }
+      updateUI();
+    });
+    $("disconnectButton").addEventListener("click", async () => {
+      clearInterval(state.poll); clearInterval(state.loop);
+      state.poll = state.loop = null;
+      if (state.mode === "LIVE") {
+        try { await api("/disconnect", {}); } catch (e) { log(`Disconnect request failed: ${e.message}`, "err"); }
+      }
+      state.queue = Promise.resolve();
+      state.connected = state.permissionGranted = state.tradingActive = false;
+      $("server").value = $("login").value = $("password").value = "";
+      message("connectionMessage", "Disconnected. Session fields cleared.");
+      log("Disconnected; local session cleared.", "warn");
+      updateUI();
+    });
+    $("qualityButton").addEventListener("click", async () => {
+      if (!state.permissionGranted) return;
+      try {
+        if (state.mode === "LIVE") {
+          const symbol = enabledSymbols()[0];
+          const q = await api(`/quality?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent($("timeframe").value)}`);
+          state.quality = q;
+        } else {
+          const symbol = enabledSymbols()[0];
+          if (!symbol) throw new Error("Select at least one symbol.");
+          const score = 72 + Math.floor(Math.random() * 29);
+          state.quality = {
+            symbol, score, direction: score % 2 ? "Bullish" : "Bearish",
+            momentum: score >= 80, isStrong: score >= 80, evaluatedAt: new Date().toISOString()
+          };
+        }
+        log(`Quality ${state.quality.symbol}: ${state.quality.score}%`, qualityPasses() ? "ok" : "warn");
+        message("executionMessage", qualityPasses() ? "Quality passes the entry threshold." : "Quality below threshold; START and OPEN remain locked.");
+      } catch (e) { log(`Quality check failed: ${e.message}`, "err"); }
+      updateUI();
+    });
+    $("startButton").addEventListener("click", () => {
+      if (!canTrade() || !qualityPasses()) return;
+      command("START", { config: config() });
+    });
+    $("stopButton").addEventListener("click", () => command("STOP"));
+    $("openButton").addEventListener("click", () => command("OPEN", { config: config(), symbol: state.quality?.symbol, timeframe: $("timeframe").value }));
+    $("closeButton").addEventListener("click", () => command("CLOSE_ALL", {}, true));
+    $("refreshButton").addEventListener("click", refreshState);
+    $("connectionTabButton").addEventListener("click", () => document.querySelector('[data-view="dashboard"]').click());
+    $("sizing").addEventListener("change", () => {
+      $("lotLabel").hidden = $("sizing").value !== "fixed";
+      $("riskLabel").hidden = $("sizing").value !== "risk";
+      updateUI();
+    });
+    document.querySelectorAll("nav button").forEach(button => button.addEventListener("click", () => {
+      document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b === button));
+      document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== button.dataset.view);
+    }));
+    $("modeButton").addEventListener("click", async () => {
+      const next = state.mode === "SIMULATION" ? "LIVE" : "SIMULATION";
+      if (!confirm(`Switch to ${next}? This will disconnect any current session.`)) return;
+      if (state.connected) $("disconnectButton").click();
+      state.mode = next;
+      $("modeButton").textContent = next;
+      $("modeButton").className = `tag ${next === "LIVE" ? "bad" : "warn"}`;
+      log(`Mode explicitly changed to ${next}.`, "warn");
+      updateUI();
+    });
+    document.querySelectorAll("input,select").forEach(el => el.addEventListener("input", updateUI));
+    updateUI();
+    log("Terminal ready in SIMULATION mode. No broker connection active.", "info");
+  </script>
+</body>
+</html>
