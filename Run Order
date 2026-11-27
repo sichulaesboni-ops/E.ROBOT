@@ -1,8 +1,0 @@
-# 1. Start the MT5 terminal, log in to your account (demo first!)
-
-# 2. Start the bridge (this also spawns executor.py)
-node bridge.js
-# → [bridge] listening http://127.0.0.1:8787
-# → [bridge] executor ready
-
-# 3. Open index.html in a browser (double-click, or serve statically)
