@@ -1,337 +1,170 @@
-# executor.py — E.ROBOT MT5 Execution Engine
-# Talks JSON-lines over stdin/stdout with bridge.js.
-import sys
-import json
-import math
-import time
-import threading
-from datetime import datetime, timezone
+#!/usr/bin/env python3
+# executor.py - MT5 Engine (stdin/stdout JSON lines)
+import sys, json, math, threading, time
 
 try:
     import MetaTrader5 as mt5
 except ImportError:
     mt5 = None
 
-# ---------- stdout writer ----------
-_lock = threading.Lock()
+STATE = {"connected": False, "positions": [], "dailyPL": 0.0, "active": False}
+LOCK = threading.Lock()
+MAX_DAILY_LOSS = 100.0
 
 def emit(obj):
-    with _lock:
-        sys.stdout.write(json.dumps(obj) + "\n")
-        sys.stdout.flush()
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
 
-def respond(id_, ok, **kw):
-    emit({"id": id_, "ok": ok, **kw})
+def reply(mid, data):
+    emit({"id": mid, "data": data})
 
-def emit_state():
-    connected = bool(mt5 and mt5.terminal_info() is not None)
-    balance = 0.0
-    equity = 0.0
-    positions = []
-    daily_pl = 0.0
-    terminal = None
-    if connected:
-        info = mt5.account_info()
-        if info:
-            balance = float(info.balance)
-            equity = float(info.equity)
-        tinfo = mt5.terminal_info()
-        if tinfo:
-            terminal = f"{tinfo.company} {tinfo.name}"
-        positions = _positions()
-        daily_pl = _daily_pl()
-    emit({
-        "type": "state",
-        "connected": connected,
-        "terminal": terminal,
-        "balance": balance,
-        "equity": equity,
-        "positions": positions,
-        "history": STATE["history"],
-        "dailyPL": daily_pl,
-        "active": STATE["active"],
-    })
-
-STATE = {"active": False, "history": [], "max_daily_loss": 200.0}
-
-# ---------- MT5 helpers ----------
-def _ensure_init():
+def do_connect(payload):
     if mt5 is None:
-        raise RuntimeError("MetaTrader5 package not installed")
-    if not mt5.initialize():
-        raise RuntimeError("mt5.initialize() failed")
-    return True
+        return {"success": False, "message": "MetaTrader5 package not installed"}
+    server = payload.get("server", "")
+    login = int(payload.get("login", 0) or 0)
+    password = payload.get("password", "")
+    ok = mt5.initialize(login=login, server=server, password=password)
+    if not ok:
+        return {"success": False, "message": f"init failed: {mt5.last_error()}"}
+    info = mt5.account_info()
+    if info is None:
+        return {"success": False, "message": "account_info returned None"}
+    with LOCK:
+        STATE["connected"] = True
+    emit({"type": "state", "data": {"connected": True}})
+    return {"success": True, "message": f"Connected to {server}"}
 
-def _positions(symbol_filter=None):
-    if not mt5: return []
-    poss = mt5.positions_get() or []
-    out = []
-    for p in poss:
-        if p.magic != 424242:
-            continue
-        if symbol_filter and p.symbol != symbol_filter:
-            continue
-        out.append({
-            "ticket": p.ticket,
-            "symbol": p.symbol,
-            "type": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
-            "lots": float(p.volume),
-            "open_price": float(p.price_open),
-            "sl": float(p.sl),
-            "tp": float(p.tp),
-            "pl": float(p.profit),
-        })
-    return out
+def ema(values, period):
+    if len(values) < period: return None
+    k = 2.0 / (period + 1)
+    e = values[0]
+    for v in values[1:]:
+        e = v * k + e * (1 - k)
+    return e
 
-def _daily_pl():
-    if not mt5: return 0.0
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    deals = mt5.history_deals_get(today, datetime.now(timezone.utc)) or []
-    pl = 0.0
-    for d in deals:
-        if d.magic == 424242:
-            pl += float(d.profit) + float(d.swap) + float(d.commission)
-    return pl
-
-def _tf_from_str(s):
-    return {
-        "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, "M15": mt5.TIMEFRAME_M15,
-        "M30": mt5.TIMEFRAME_M30, "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4, "D1": mt5.TIMEFRAME_D1,
-    }.get(s.upper(), mt5.TIMEFRAME_H1)
-
-def _ema(vals, period):
-    k = 2.0 / (period + 1.0)
-    ema = vals[0]
-    out = [ema]
-    for v in vals[1:]:
-        ema = v * k + ema * (1 - k)
-        out.append(ema)
-    return out
-
-def _slope(series, n=10):
-    tail = series[-n:]
-    if len(tail) < 2: return 0.0
-    x0, x1 = 0, len(tail) - 1
-    y0, y1 = tail[0], tail[-1]
-    return (y1 - y0) / max(1, (x1 - x0))
-
-# ---------- Quality algorithm ----------
-def compute_quality(symbol, timeframe):
-    _ensure_init()
-    tf = _tf_from_str(timeframe)
-    bars = mt5.copy_rates_from_pos(symbol, tf, 0, 200)
-    if bars is None or len(bars) < 60:
-        raise RuntimeError("insufficient bars")
-    closed = bars[:-1]   # strict: only closed bars
-    closes = [float(b["close"]) for b in closed]
-    highs = [float(b["high"]) for b in closed]
-    lows = [float(b["low"]) for b in closed]
-
-    ema50 = _ema(closes, 50)
-    ema200 = _ema(closes, 200)
-    trend_slope = _slope([a-b for a,b in zip(ema50[-50:], ema200[-50:])])
-    atr = sum(highs[i]-lows[i] for i in range(-14,0))/14.0
-    if atr <= 0: atr = 1e-6
-
-    # Trend component (0..100)
-    trend_norm = max(-1.0, min(1.0, trend_slope / (atr*0.5)))
-    trend_score = 50.0 + 50.0 * trend_norm
-
-    # Momentum component (0..100)
-    ret_short = (closes[-1] - closes[-10]) / max(1e-9, closes[-10])
-    ret_long  = (closes[-1] - closes[-50]) / max(1e-9, closes[-50])
-    mom_norm = max(-1.0, min(1.0, (ret_short*0.7 + ret_long*0.3) / 0.01))
-    momentum_score = 50.0 + 50.0 * mom_norm
-
-    # Confirmation: short-term and long-term returns same sign
-    momentum_confirmed = (ret_short >= 0) == (ret_long >= 0) and abs(ret_short) > 1e-5
-
+def calc_quality(symbol, timeframe):
+    if mt5 is None or not STATE["connected"]:
+        return {"score": 0, "direction": "NEUTRAL", "isStrong": False}
+    tf_map = {"M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, "M15": mt5.TIMEFRAME_M15,
+              "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4, "D1": mt5.TIMEFRAME_D1}
+    tf = tf_map.get(timeframe, mt5.TIMEFRAME_H1)
+    rates = mt5.copy_rates_from_pos(symbol, tf, 0, 200)
+    if rates is None or len(rates) < 200:
+        return {"score": 0, "direction": "NEUTRAL", "isStrong": False}
+    closed = rates[:-1]
+    closes = [float(r["close"]) for r in closed]
+    ema50 = ema(closes[-50:], 50)
+    ema200 = ema(closes, 200)
+    if ema50 is None or ema200 is None:
+        return {"score": 0, "direction": "NEUTRAL", "isStrong": False}
+    trend_strength = (ema50 - ema200) / ema200 * 100
+    trend_score = min(100, max(0, 50 + trend_strength * 20))
+    recent = closes[-10:]
+    momentum = (recent[-1] - recent[0]) / recent[0] * 100
+    momentum_score = min(100, max(0, 50 + momentum * 30))
+    momentum_confirmed = (trend_strength > 0 and momentum > 0) or (trend_strength < 0 and momentum < 0)
     score = round(0.6 * trend_score + 0.4 * momentum_score)
     if not momentum_confirmed:
         score = min(score, 79)
+    direction = "BULLISH" if trend_strength > 0 else "BEARISH" if trend_strength < 0 else "NEUTRAL"
+    return {"score": score, "direction": direction, "isStrong": score >= 85}
 
-    direction = "BUY" if trend_slope > 0 else "SELL"
-    return {
-        "score": int(score),
-        "direction": direction,
-        "isStrong": score >= 85,
-        "trend": round(trend_score, 1),
-        "momentum": round(momentum_score, 1),
-    }
-
-# ---------- Order execution ----------
-def open_order(payload):
-    _ensure_init()
+def do_open(payload):
+    if mt5 is None or not STATE["connected"]:
+        return {"success": False, "error": "not connected"}
+    if STATE["dailyPL"] <= -MAX_DAILY_LOSS:
+        return {"success": False, "error": "daily loss limit hit"}
     symbol = payload.get("symbol", "XAUUSD")
-    direction = payload.get("direction", "BUY").upper()
-    lots = float(payload.get("lots", 0.10))
-    sl_points = int(payload.get("sl", 300))
-    tp_points = int(payload.get("tp", 600))
-
-    if _daily_pl() <= -STATE["max_daily_loss"]:
-        raise RuntimeError("daily loss limit reached")
-
-    info = mt5.symbol_info(symbol)
+    lot = float(payload.get("lot", 0.05))
+    direction = payload.get("direction", "BULLISH")
+    order_type = mt5.ORDER_TYPE_BUY if direction == "BULLISH" else mt5.ORDER_TYPE_SELL
     tick = mt5.symbol_info_tick(symbol)
-    if info is None or tick is None:
-        raise RuntimeError(f"symbol {symbol} unavailable")
-    if not info.visible:
-        mt5.symbol_select(symbol, True)
-
-    point = float(info.point)
-    stops_level = int(info.trade_stops_level) * point
-    min_dist = max(stops_level, 10*point)
-
-    if direction == "BUY":
-        price = tick.ask
-        sl = price - max(sl_points*point, min_dist)
-        tp = price + max(tp_points*point, min_dist)
-        order_type = mt5.ORDER_TYPE_BUY
-    else:
-        price = tick.bid
-        sl = price + max(sl_points*point, min_dist)
-        tp = price - max(tp_points*point, min_dist)
-        order_type = mt5.ORDER_TYPE_SELL
-
+    info = mt5.symbol_info(symbol)
+    if tick is None or info is None:
+        return {"success": False, "error": "symbol info unavailable"}
+    price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
+    stops_level = info.trade_stops_level * info.point
+    sl = price - stops_level * 1.5 if order_type == mt5.ORDER_TYPE_BUY else price + stops_level * 1.5
+    tp = price + stops_level * 3.0 if order_type == mt5.ORDER_TYPE_BUY else price - stops_level * 3.0
     req = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
-        "volume": lots,
+        "volume": lot,
         "type": order_type,
         "price": price,
         "sl": sl,
         "tp": tp,
         "deviation": 20,
-        "magic": 424242,
+        "magic": 123456,
         "comment": "E.ROBOT",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
     res = mt5.order_send(req)
     if res is None or res.retcode != mt5.TRADE_RETCODE_DONE:
-        raise RuntimeError(f"order_send failed retcode={getattr(res,'retcode',None)}")
+        return {"success": False, "error": str(res.retcode if res else "None")}
+    return {"success": True, "ticket": res.order, "price": price}
 
-    STATE["history"].append({
-        "time": int(time.time()*1000),
-        "symbol": symbol,
-        "side": "BUY" if direction == "BUY" else "SELL",
-        "lots": lots,
-        "price": float(price),
-        "pl": 0.0,
-        "status": "OPENED",
-    })
-    return {"ticket": int(res.order), "price": float(price)}
-
-def close_all():
-    _ensure_init()
-    # cancel pending
-    cancelled = 0
-    for o in mt5.orders_get() or []:
-        if o.magic == 424242:
-            r = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": o.ticket})
-            if r and r.retcode == mt5.TRADE_RETCODE_DONE:
-                cancelled += 1
-    # close positions
+def do_close_all():
+    if mt5 is None or not STATE["connected"]:
+        return {"success": False, "error": "not connected"}
+    positions = mt5.positions_get()
     closed = 0
-    for p in _positions():
-        tick = mt5.symbol_info_tick(p["symbol"])
-        if tick is None: continue
-        price = tick.bid if p["type"] == "BUY" else tick.ask
-        req = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": p["symbol"],
-            "volume": p["lots"],
-            "type": mt5.ORDER_TYPE_SELL if p["type"]=="BUY" else mt5.ORDER_TYPE_BUY,
-            "position": p["ticket"],
-            "price": price,
-            "deviation": 30,
-            "magic": 424242,
-            "comment": "E.ROBOT-CLOSE",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        r = mt5.order_send(req)
-        if r and r.retcode == mt5.TRADE_RETCODE_DONE:
-            closed += 1
-            STATE["history"].append({
-                "time": int(time.time()*1000),
-                "symbol": p["symbol"],
-                "side": "CLOSE",
-                "lots": p["lots"],
-                "price": float(price),
-                "pl": float(p["pl"]),
-                "status": "CLOSED",
-            })
-    return {"closed": closed, "cancelled": cancelled}
+    if positions:
+        for p in positions:
+            if p.magic != 123456: continue
+            tick = mt5.symbol_info_tick(p.symbol)
+            if tick is None: continue
+            close_type = mt5.ORDER_TYPE_SELL if p.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
+            price = tick.bid if close_type == mt5.ORDER_TYPE_SELL else tick.ask
+            req = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "position": p.ticket,
+                "symbol": p.symbol,
+                "volume": p.volume,
+                "type": close_type,
+                "price": price,
+                "deviation": 20,
+                "magic": 123456,
+                "comment": "E.ROBOT CLOSE",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
+            r = mt5.order_send(req)
+            if r and r.retcode == mt5.TRADE_RETCODE_DONE: closed += 1
+    orders = mt5.orders_get()
+    if orders:
+        for o in orders:
+            if o.magic != 123456: continue
+            mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": o.ticket})
+    return {"success": True, "closed": closed}
 
 def handle(msg):
-    id_ = msg.get("id")
-    cmd = msg.get("cmd")
+    mid = msg.get("id")
+    action = msg.get("action", "").upper()
+    payload = msg.get("payload", {}) or {}
     try:
-        if cmd == "connect":
-            _ensure_init()
-            ok = mt5.login(int(msg["login"]), password=msg["password"], server=msg["server"])
-            if not ok:
-                raise RuntimeError("login failed")
-            info = mt5.account_info()
-            tinfo = mt5.terminal_info()
-            respond(id_, True,
-                    terminal=f"{tinfo.company} {tinfo.name}" if tinfo else "MT5",
-                    balance=float(info.balance), equity=float(info.equity))
-            emit_state()
-            return
-
-        if cmd == "quality":
-            q = compute_quality(msg["symbol"], msg["timeframe"])
-            respond(id_, True, **q)
-            return
-
-        if cmd == "open":
-            r = open_order(msg.get("payload", {}))
-            respond(id_, True, **r)
-            emit_state()
-            return
-
-        if cmd == "close_all":
-            r = close_all()
-            respond(id_, True, **r)
-            emit_state()
-            return
-
-        if cmd == "start":
-            STATE["active"] = True
-            if "max_daily_loss" in (msg.get("payload") or {}):
-                STATE["max_daily_loss"] = float(msg["payload"]["max_daily_loss"])
-            respond(id_, True, active=True)
-            emit_state()
-            return
-
-        if cmd == "stop":
-            STATE["active"] = False
-            respond(id_, True, active=False)
-            emit_state()
-            return
-
-        if cmd == "state":
-            respond(id_, True, state={
-                "connected": bool(mt5 and mt5.terminal_info() is not None),
-                "terminal": None,
-                "balance": 0.0,
-                "equity": 0.0,
-                "positions": _positions(),
-                "history": STATE["history"],
-                "dailyPL": _daily_pl(),
-                "active": STATE["active"],
-            })
-            return
-
-        respond(id_, False, error=f"unknown cmd: {cmd}")
+        if action == "CONNECT":
+            reply(mid, do_connect(payload))
+        elif action == "GET_QUALITY":
+            reply(mid, calc_quality(payload.get("symbol", "XAUUSD"), payload.get("timeframe", "H1")))
+        elif action == "OPEN":
+            reply(mid, do_open(payload))
+        elif action == "CLOSE_ALL":
+            reply(mid, do_close_all())
+        elif action == "START":
+            with LOCK: STATE["active"] = True
+            reply(mid, {"success": True})
+        elif action == "STOP":
+            with LOCK: STATE["active"] = False
+            reply(mid, {"success": True})
+        else:
+            reply(mid, {"success": False, "error": f"unknown action {action}"})
     except Exception as e:
-        respond(id_, False, error=str(e))
+        reply(mid, {"success": False, "error": str(e)})
 
 def main():
-    emit({"type": "ready"})
-    emit_state()
     for line in sys.stdin:
         line = line.strip()
         if not line: continue
@@ -339,11 +172,8 @@ def main():
             msg = json.loads(line)
         except Exception:
             continue
-        # handle in a thread to allow kill-switch responsiveness
-        if msg.get("cmd") == "close_all":
-            handle(msg)   # synchronous & prioritized
-        else:
-            threading.Thread(target=handle, args=(msg,), daemon=True).start()
+        t = threading.Thread(target=handle, args=(msg,), daemon=True)
+        t.start()
 
 if __name__ == "__main__":
     main()
