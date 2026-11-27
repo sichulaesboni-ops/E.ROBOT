@@ -1,3 +1,0 @@
-# E.ROBOT — Trading Control System
-
-A three-artifact trading system that separates **UI**, **bridge**, and **execution** so no single component ever holds both credentials and execution rights simultaneously.
