@@ -1,251 +1,113 @@
-/* bridge.js — E.ROBOT bridge (Node.js, zero deps)
- * Binds 127.0.0.1:8787, spawns executor.py, talks JSON-lines over stdio.
- */
-'use strict';
-
+// bridge.js - zero external dependencies
 const http = require('http');
 const { spawn } = require('child_process');
-const path = require('path');
 const url = require('url');
 
-const HOST = '127.0.0.1';
 const PORT = 8787;
-const EXECUTOR = path.join(__dirname, 'executor.py');
+const HOST = '127.0.0.1';
 
-/* ---------- Executor process ---------- */
-let child = null;
-let childReady = false;
-let stdoutBuf = '';
-let reqSeq = 0;
-const pending = new Map();            // id -> {resolve, reject, timer}
-const seenRequests = new Map();       // requestId -> response (dedupe, 10 min TTL)
-const state = {
-  connected: false,
-  terminal: null,
-  balance: 0,
-  equity: 0,
-  positions: [],
-  history: [],
-  dailyPL: 0,
-  active: false,
-};
+let executor = null;
+let state = { connected: false, positions: [], dailyPL: 0, active: false };
+let msgId = 0;
+const pending = new Map();
+const dedupe = new Map();
 
-function startExecutor(){
-  child = spawn('python', ['-u', EXECUTOR], { stdio: ['pipe','pipe','pipe'] });
-
-  child.stdout.on('data', buf=>{
-    stdoutBuf += buf.toString('utf8');
-    let idx;
-    while((idx = stdoutBuf.indexOf('\n')) >= 0){
-      const line = stdoutBuf.slice(0, idx).trim();
-      stdoutBuf = stdoutBuf.slice(idx+1);
-      if(!line) continue;
-      handleExecutorLine(line);
+function startExecutor() {
+  executor = spawn('python', ['executor.py'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let buf = '';
+  executor.stdout.on('data', d => {
+    buf += d.toString();
+    const lines = buf.split('\n'); buf = lines.pop();
+    for (const l of lines) {
+      if (!l.trim()) continue;
+      try {
+        const m = JSON.parse(l);
+        if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+        if (m.type === 'state') state = { ...state, ...m.data };
+        if (m.type === 'disconnected') state.connected = false;
+      } catch (e) { console.error('parse err', e.message); }
     }
   });
+  executor.stderr.on('data', d => console.error('exec:', d.toString()));
+  executor.on('close', c => { console.log('executor closed', c); executor = null; state.connected = false; });
+}
 
-  child.stderr.on('data', buf=>{
-    // Never forward raw stderr to logs with secrets; just generic trace
-    process.stderr.write('[executor.stderr] '+buf.toString('utf8'));
-  });
-
-  child.on('exit', (code, sig)=>{
-    childReady = false;
-    state.connected = false;
-    state.active = false;
-    state.positions = [];
-    // reject all pending
-    for(const [,p] of pending){ clearTimeout(p.timer); p.reject(new Error('executor exited')); }
-    pending.clear();
-    console.error(`[bridge] executor exited code=${code} sig=${sig}`);
-  });
-
-  child.on('error', err=>{
-    console.error('[bridge] executor spawn error', err.message);
+function send(action, payload = {}) {
+  return new Promise((resolve, reject) => {
+    if (!executor) return reject(new Error('executor down'));
+    const id = ++msgId;
+    pending.set(id, resolve);
+    executor.stdin.write(JSON.stringify({ id, action, payload }) + '\n');
+    setTimeout(() => { if (pending.has(id)) { pending.delete(id); reject(new Error('timeout')); } }, 15000);
   });
 }
 
-function handleExecutorLine(line){
-  let msg;
-  try { msg = JSON.parse(line); } catch { return; }
-  if(msg.type === 'ready'){
-    childReady = true;
-    console.log('[bridge] executor ready');
-    return;
-  }
-  if(msg.type === 'state'){
-    Object.assign(state, {
-      connected: !!msg.connected,
-      terminal: msg.terminal || state.terminal,
-      balance: msg.balance || 0,
-      equity: msg.equity || 0,
-      positions: msg.positions || [],
-      history: msg.history || state.history,
-      dailyPL: msg.dailyPL || 0,
-      active: !!msg.active,
-    });
-    return;
-  }
-  if(msg.id && pending.has(msg.id)){
-    const p = pending.get(msg.id);
-    clearTimeout(p.timer);
-    pending.delete(msg.id);
-    p.resolve(msg);
-  }
-}
-
-function callExecutor(payload, timeoutMs=10000){
-  return new Promise((resolve, reject)=>{
-    if(!child || !childReady){ return reject(new Error('executor not ready')); }
-    const id = ++reqSeq;
-    const timer = setTimeout(()=>{ pending.delete(id); reject(new Error('executor timeout')); }, timeoutMs);
-    pending.set(id, { resolve, reject, timer });
-    try { child.stdin.write(JSON.stringify({id, ...payload})+'\n'); }
-    catch(e){ clearTimeout(timer); pending.delete(id); reject(e); }
+function body(req) {
+  return new Promise((res, rej) => {
+    let b = ''; req.on('data', c => b += c);
+    req.on('end', () => { try { res(b ? JSON.parse(b) : {}); } catch (e) { rej(e); } });
+    req.on('error', rej);
   });
 }
 
-/* ---------- HTTP helpers ---------- */
-function send(res, code, obj, extraHeaders={}){
-  const body = JSON.stringify(obj);
-  res.writeHead(code, {
-    'Content-Type':'application/json',
-    'Access-Control-Allow-Origin':'*',
-    'Access-Control-Allow-Methods':'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers':'Content-Type',
-    'Content-Length':Buffer.byteLength(body),
-    ...extraHeaders,
+function json(res, status, obj) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
   });
-  res.end(body);
-}
-function readBody(req){
-  return new Promise((resolve, reject)=>{
-    let data='';
-    req.on('data', c=>{ data+=c; if(data.length > 1e6) req.destroy(); });
-    req.on('end', ()=>{ try{ resolve(data? JSON.parse(data):{}); }catch(e){ reject(e); } });
-    req.on('error', reject);
-  });
-}
-function safeLog(...args){
-  // scrub password fields
-  const out = args.map(a=>{
-    if(typeof a === 'string') return a.replace(/("password"\s*:\s*")[^"]+(")/g, '$1***$2');
-    if(a && typeof a === 'object'){
-      const c = {...a};
-      if('password' in c) c.password = '***';
-      return JSON.stringify(c);
-    }
-    return a;
-  });
-  console.log(...out);
+  res.end(JSON.stringify(obj));
 }
 
-/* ---------- Server ---------- */
-const server = http.createServer(async (req, res)=>{
-  const u = url.parse(req.url, true);
-  if(req.method === 'OPTIONS'){ return send(res, 204, {}); }
+const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') { json(res, 204, {}); return; }
+  const p = url.parse(req.url, true).pathname;
 
-  try{
-    if(req.method === 'GET' && u.pathname === '/health'){
-      return send(res, 200, { ok: true, executor: childReady });
-    }
-
-    if(req.method === 'POST' && u.pathname === '/connect'){
-      const body = await readBody(req);
-      const { server: srv, login, password } = body || {};
-      if(!srv || !login || !password) return send(res, 400, { error:'server, login, password required' });
-      safeLog('[connect]', { server: srv, login });
-      try{
-        const r = await callExecutor({ cmd:'connect', server: srv, login, password });
-        if(r.ok){
-          state.connected = true;
-          state.terminal = r.terminal || 'MT5';
-          state.balance = r.balance || 0;
-          state.equity = r.equity || 0;
-          return send(res, 200, { connected: true, terminal: state.terminal, balance: state.balance, equity: state.equity });
-        }
-        return send(res, 400, { connected: false, error: r.error || 'connect failed' });
-      }catch(e){
-        return send(res, 503, { connected: false, error: e.message });
+  try {
+    if (p === '/connect' && req.method === 'POST') {
+      const b = await body(req);
+      if (!executor) startExecutor();
+      try {
+        const r = await send('CONNECT', { server: b.server, login: b.login, password: b.password });
+        state.connected = !!(r.success);
+        return json(res, 200, { status: state.connected ? 'CONNECTED' : 'FAILED', message: r.message || '' });
+      } catch (e) {
+        return json(res, 503, { error: e.message, status: 'DISCONNECTED' });
       }
     }
 
-    if(req.method === 'GET' && u.pathname === '/quality'){
-      const symbol = u.query.symbol || 'XAUUSD';
-      const timeframe = u.query.timeframe || 'H1';
-      try{
-        const r = await callExecutor({ cmd:'quality', symbol, timeframe });
-        if(!r.ok) return send(res, 500, { error: r.error || 'quality failed' });
-        return send(res, 200, { score: r.score, direction: r.direction, isStrong: r.isStrong, trend: r.trend, momentum: r.momentum });
-      }catch(e){
-        return send(res, 503, { error: e.message });
-      }
+    if (p === '/quality' && req.method === 'GET') {
+      if (!executor || !state.connected) return json(res, 503, { error: 'not connected' });
+      const q = url.parse(req.url, true).query;
+      try {
+        const r = await send('GET_QUALITY', { symbol: q.symbol || 'XAUUSD', timeframe: q.timeframe || 'H1' });
+        return json(res, 200, r.data || { score: 0 });
+      } catch (e) { return json(res, 503, { error: e.message }); }
     }
 
-    if(req.method === 'GET' && u.pathname === '/state'){
-      // Ask executor for authoritative state; fall back to cache
-      try{
-        const r = await callExecutor({ cmd:'state' }, 3000);
-        if(r.ok && r.state) Object.assign(state, r.state);
-      }catch{ /* use cached */ }
-      return send(res, 200, state);
+    if (p === '/command' && req.method === 'POST') {
+      const b = await body(req);
+      if (b.requestId && dedupe.has(b.requestId)) return json(res, 200, dedupe.get(b.requestId));
+      if (!executor || !state.connected) return json(res, 503, { error: 'not connected' });
+      try {
+        const r = await send(b.action, b.payload || {});
+        const out = { success: true, data: r.data || r };
+        if (b.requestId) { dedupe.set(b.requestId, out); setTimeout(() => dedupe.delete(b.requestId), 60000); }
+        return json(res, 200, out);
+      } catch (e) { return json(res, 503, { error: e.message }); }
     }
 
-    if(req.method === 'POST' && u.pathname === '/command'){
-      const body = await readBody(req);
-      const { action, payload, requestId } = body || {};
-      if(!action) return send(res, 400, { error:'action required' });
-
-      // Dedupe
-      if(requestId && seenRequests.has(requestId)){
-        return send(res, 200, seenRequests.get(requestId));
-      }
-
-      let responseObj;
-      try{
-        if(action === 'CLOSE_ALL'){
-          const r = await callExecutor({ cmd:'close_all' }, 15000);
-          responseObj = r.ok ? { ok:true, closed: r.closed, cancelled: r.cancelled }
-                             : { ok:false, error: r.error };
-        } else if(action === 'START'){
-          const r = await callExecutor({ cmd:'start', payload: payload||{} });
-          if(r.ok){ state.active = true; }
-          responseObj = r.ok ? { ok:true, active:true } : { ok:false, error:r.error };
-        } else if(action === 'STOP'){
-          const r = await callExecutor({ cmd:'stop' });
-          if(r.ok){ state.active = false; }
-          responseObj = r.ok ? { ok:true, active:false } : { ok:false, error:r.error };
-        } else if(action === 'OPEN'){
-          const r = await callExecutor({ cmd:'open', payload: payload||{} }, 20000);
-          responseObj = r.ok ? { ok:true, ticket: r.ticket, price: r.price }
-                             : { ok:false, error: r.error };
-        } else {
-          responseObj = { ok:false, error:'unknown action' };
-        }
-      }catch(e){
-        return send(res, 503, { ok:false, error: e.message });
-      }
-
-      if(requestId) seenRequests.set(requestId, responseObj);
-      return send(res, responseObj.ok ? 200 : 400, responseObj);
+    if (p === '/state' && req.method === 'GET') {
+      return json(res, 200, { ...state, executor: !!executor });
     }
 
-    return send(res, 404, { error:'not found' });
-  }catch(e){
-    return send(res, 500, { error: 'internal error' });
-  }
+    json(res, 404, { error: 'not found' });
+  } catch (e) { json(res, 500, { error: e.message }); }
 });
 
-// TTL cleanup for dedupe cache
-setInterval(()=>{
-  const cutoff = Date.now() - 10*60*1000;
-  for(const [k,v] of seenRequests){ /* store timestamps separately if needed */ }
-}, 60000);
-
-server.listen(PORT, HOST, ()=>{
-  console.log(`[bridge] listening http://${HOST}:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Bridge on http://${HOST}:${PORT}`);
   startExecutor();
 });
-
-process.on('SIGINT', ()=>{ if(child) child.kill(); server.close(()=>process.exit(0)); });
-process.on('SIGTERM', ()=>{ if(child) child.kill(); server.close(()=>process.exit(0)); });
+process.on('SIGINT', () => { if (executor) executor.kill(); server.close(); process.exit(0); });
